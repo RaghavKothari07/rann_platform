@@ -43,6 +43,9 @@ const TIERS = {
 
 const EVENTS = ["Push-ups", "Squats", "Plank", "100m Sprint"];
 
+// Capacity: 5 batches of 5 athletes per (event × tier) = 25 hard cap
+const MAX_PER_SLOT = 25;
+
 const BELTS = [
   { name: "White", min: 0, color: "#FFFFFF", border: "#999999", textColor: "#1A1A1A" },
   { name: "Blue", min: 250, color: "#1F4E79", border: "#1F4E79", textColor: "#FFFFFF" },
@@ -89,6 +92,55 @@ const calculatePoints = (results, tiers) => {
   const eventsCompeted = new Set(results.map((r) => r.event));
   if (eventsCompeted.size === 4) dayTotal *= 1.5;
   return Math.round(dayTotal);
+};
+
+// Slot capacity helpers
+const slotKey = (event, tier) => `${event}|${tier}`;
+const getSlotInfo = (slotCounts, event, tier) => {
+  const k = slotKey(event, tier);
+  const info = slotCounts[k] || { registered: 0, waitlisted: 0 };
+  const spotsLeft = Math.max(0, MAX_PER_SLOT - info.registered);
+  const isFull = info.registered >= MAX_PER_SLOT;
+  let status = "open";
+  if (isFull) status = "full";
+  else if (spotsLeft <= 5) status = "almost-full";
+  else if (spotsLeft <= 12) status = "filling";
+  return { ...info, spotsLeft, isFull, status };
+};
+const getSlotColor = (status) => {
+  if (status === "full") return { bg: "#7B1A1A", text: "#FFFFFF", label: "FULL · Waitlist" };
+  if (status === "almost-full") return { bg: "#C97F12", text: "#FFFFFF", label: "Almost full" };
+  if (status === "filling") return { bg: "#5C8A2A", text: "#FFFFFF", label: "Filling fast" };
+  return { bg: "#2D7A47", text: "#FFFFFF", label: "Open" };
+};
+
+// Token format: B-PU-2-04 = Tier letter, Event code, Batch number, Position (zero-padded)
+const TIER_LETTERS = { Bronze: "B", Silver: "S", Gold: "G", Platinum: "P" };
+const EVENT_CODES = { "Push-ups": "PU", "Squats": "SQ", "Plank": "PL", "100m Sprint": "SP" };
+const BATCH_SIZE = 5;
+const formatToken = (tier, eventName, batch, position) => {
+  const t = TIER_LETTERS[tier] || "X";
+  const e = EVENT_CODES[eventName] || "XX";
+  const b = String(batch);
+  const p = String(position).padStart(2, "0");
+  return `${t}-${e}-${b}-${p}`;
+};
+// Compute next batch & position for an (event×tier) given existing assignments
+const nextBatchSlot = (existingAssignments, eventName, tier) => {
+  const filtered = existingAssignments.filter((a) => a.event_name === eventName && a.tier === tier);
+  if (filtered.length >= MAX_PER_SLOT) return null; // full
+  // Fill batches in order: batch 1 fills first, then batch 2, etc.
+  // Find the first batch with a free seat.
+  for (let batch = 1; batch <= 5; batch++) {
+    const inBatch = filtered.filter((a) => a.batch_number === batch);
+    if (inBatch.length < BATCH_SIZE) {
+      const usedPositions = new Set(inBatch.map((a) => a.position));
+      for (let pos = 1; pos <= BATCH_SIZE; pos++) {
+        if (!usedPositions.has(pos)) return { batch, position: pos };
+      }
+    }
+  }
+  return null;
 };
 
 // ============================================================
@@ -145,30 +197,39 @@ const OrnamentDivider = ({ color = "#D4A017", width = 200 }) => (
 
 const RannLogo = ({ size = "md", inverted = false, showEmblem = true }) => {
   const sizes = {
-    sm: { rann: 28, dev: 14, sub: 9, emblem: 32 },
-    md: { rann: 48, dev: 22, sub: 11, emblem: 50 },
-    lg: { rann: 80, dev: 36, sub: 14, emblem: 80 },
-    xl: { rann: 130, dev: 56, sub: 18, emblem: 140 },
+    sm: { rann: 26, dev: 14, sub: 9, emblem: 32, spacing: 0.04 },
+    md: { rann: 44, dev: 22, sub: 11, emblem: 50, spacing: 0.05 },
+    lg: { rann: 72, dev: 32, sub: 13, emblem: 80, spacing: 0.05 },
+    xl: { rann: 92, dev: 40, sub: 14, emblem: 130, spacing: 0.04 },
   };
   const s = sizes[size];
   const mainColor = inverted ? COLORS.cream : COLORS.charcoal;
   const accentColor = inverted ? COLORS.gold : COLORS.primary;
   return (
-    <div style={{ textAlign: "center", lineHeight: 1, position: "relative", display: "inline-block" }}>
+    <div style={{ textAlign: "center", lineHeight: 1, position: "relative", display: "inline-block", maxWidth: "100%" }}>
       {showEmblem && size !== "sm" && (
-        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -55%)", opacity: inverted ? 0.18 : 0.12, zIndex: 0, pointerEvents: "none" }}>
-          <SwordsEmblem size={s.emblem * 1.8} color={inverted ? COLORS.gold : COLORS.primary} />
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", opacity: inverted ? 0.32 : 0.15, zIndex: 0, pointerEvents: "none" }}>
+          <SwordsEmblem size={s.emblem * 1.6} color={inverted ? COLORS.gold : COLORS.primary} />
         </div>
       )}
       <div style={{ position: "relative", zIndex: 1 }}>
         <div style={{ fontSize: s.dev, color: accentColor, fontWeight: 700, fontFamily: "'Noto Serif Devanagari', serif", marginBottom: 4, letterSpacing: 2 }}>रण</div>
-        <div style={{ fontSize: s.rann, fontFamily: "'Cinzel', 'Times New Roman', serif", fontWeight: 700, letterSpacing: s.rann * 0.06, color: mainColor, lineHeight: 1, textShadow: inverted ? `0 2px 8px rgba(0,0,0,0.3)` : "none" }}>RANN</div>
+        <div style={{
+          fontSize: `clamp(${Math.round(s.rann * 0.55)}px, ${s.rann * 0.11}vw, ${s.rann}px)`,
+          fontFamily: "'Cinzel', 'Times New Roman', serif",
+          fontWeight: 700,
+          letterSpacing: `${s.spacing}em`,
+          color: mainColor,
+          lineHeight: 1,
+          textShadow: inverted ? `0 2px 8px rgba(0,0,0,0.4)` : "none",
+          whiteSpace: "nowrap",
+        }}>RANN</div>
         {size !== "sm" && (
           <>
-            <div style={{ marginTop: 12, marginBottom: 8 }}>
-              <OrnamentDivider color={accentColor} width={size === "xl" ? 280 : size === "lg" ? 200 : 140} />
+            <div style={{ marginTop: 14, marginBottom: 10 }}>
+              <OrnamentDivider color={accentColor} width={size === "xl" ? 200 : size === "lg" ? 160 : 130} />
             </div>
-            <div style={{ fontSize: s.sub, color: accentColor, letterSpacing: 4, fontWeight: 600 }}>STEP INTO THE ARENA</div>
+            <div style={{ fontSize: s.sub, color: accentColor, letterSpacing: 4, fontWeight: 600, whiteSpace: "nowrap" }}>STEP INTO THE ARENA</div>
           </>
         )}
       </div>
@@ -285,19 +346,19 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
     <div style={{
       position: "relative",
       background: `radial-gradient(ellipse at center, ${COLORS.primaryLight} 0%, ${COLORS.primary} 40%, ${COLORS.primaryDark} 80%, #3A0000 100%)`,
-      padding: "70px 24px 80px",
+      padding: "50px 20px 60px",
       textAlign: "center",
       borderRadius: 16,
-      marginBottom: 40,
+      marginBottom: 32,
       overflow: "hidden",
       boxShadow: `0 8px 32px rgba(75, 0, 0, 0.35), inset 0 1px 0 ${COLORS.gold}40`,
       border: `1px solid ${COLORS.gold}60`,
     }}>
       {/* Decorative corner ornaments */}
-      <div style={{ position: "absolute", top: 12, left: 12, width: 40, height: 40, borderTop: `2px solid ${COLORS.gold}`, borderLeft: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
-      <div style={{ position: "absolute", top: 12, right: 12, width: 40, height: 40, borderTop: `2px solid ${COLORS.gold}`, borderRight: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
-      <div style={{ position: "absolute", bottom: 12, left: 12, width: 40, height: 40, borderBottom: `2px solid ${COLORS.gold}`, borderLeft: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
-      <div style={{ position: "absolute", bottom: 12, right: 12, width: 40, height: 40, borderBottom: `2px solid ${COLORS.gold}`, borderRight: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
+      <div style={{ position: "absolute", top: 10, left: 10, width: 28, height: 28, borderTop: `2px solid ${COLORS.gold}`, borderLeft: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
+      <div style={{ position: "absolute", top: 10, right: 10, width: 28, height: 28, borderTop: `2px solid ${COLORS.gold}`, borderRight: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
+      <div style={{ position: "absolute", bottom: 10, left: 10, width: 28, height: 28, borderBottom: `2px solid ${COLORS.gold}`, borderLeft: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
+      <div style={{ position: "absolute", bottom: 10, right: 10, width: 28, height: 28, borderBottom: `2px solid ${COLORS.gold}`, borderRight: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
 
       {/* Subtle dot pattern overlay */}
       <div style={{
@@ -311,7 +372,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       {/* The big logo with swords */}
       <div style={{ position: "relative", zIndex: 1 }}>
         <RannLogo size="xl" inverted />
-        <div style={{ fontStyle: "italic", color: COLORS.cream, opacity: 0.85, marginTop: 24, fontSize: 16, fontFamily: "Georgia, serif", letterSpacing: 1 }}>
+        <div style={{ fontStyle: "italic", color: COLORS.cream, opacity: 0.85, marginTop: 22, fontSize: 14, fontFamily: "Georgia, serif", letterSpacing: 1 }}>
           ~ Where warriors are made ~
         </div>
       </div>
@@ -430,7 +491,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
               <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 12, fontSize: 13, lineHeight: 1.8, color: COLORS.charcoal }}>
                 <div><span style={{ color: COLORS.gold, fontWeight: 700 }}>1st</span> · <strong>₹{t.entry * 2}</strong></div>
                 <div><span style={{ color: COLORS.textGray, fontWeight: 700 }}>2nd</span> · ₹{t.entry}</div>
-                <div><span style={{ color: COLORS.textGray, fontWeight: 700 }}>3-5</span> · ₹{Math.round(t.entry * 0.3)} ea</div>
+                <div><span style={{ color: COLORS.textGray, fontWeight: 700 }}>3-5</span> · ₹{Math.round(t.entry * 0.3)} each</div>
               </div>
               <div style={{ marginTop: 12, padding: "6px 10px", background: `${t.color}15`, borderRadius: 4, fontSize: 11, color: t.color, fontWeight: 700, letterSpacing: 1 }}>
                 {t.multiplier}× POINTS
@@ -439,6 +500,114 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
           </Card>
         ))}
       </div>
+    </div>
+
+    {/* HOW IT WORKS — Points & Belts explainer */}
+    <div style={{ marginBottom: 40 }}>
+      <SectionHeader title="How You Climb" subtitle="Points · Belts · Glory" centered />
+
+      {/* The big picture intro */}
+      <Card variant="parchment" style={{ marginBottom: 20, padding: 24 }}>
+        <div style={{ fontSize: 15, lineHeight: 1.7, color: COLORS.charcoal, fontFamily: "Georgia, serif" }}>
+          Every Sunday you compete, you earn <strong style={{ color: COLORS.primary }}>points</strong>. Points stack up over time. As your total grows, you climb the <strong style={{ color: COLORS.primary }}>belt ranks</strong> — White → Blue → Purple → Brown → Black. Higher belts unlock perks like free entries and priority registration. The top warrior of the year wins the <strong style={{ color: COLORS.primary }}>Pink City Champion</strong> title and ₹50,000.
+        </div>
+      </Card>
+
+      {/* How to earn points */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 12, textAlign: "center" }}>◆ HOW POINTS WORK ◆</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+          <Card style={{ padding: 18, borderTop: `3px solid ${COLORS.primary}` }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.charcoal, marginBottom: 8, fontFamily: "'Cinzel', serif" }}>Just Show Up</div>
+            <div style={{ fontSize: 13, color: COLORS.textGray, lineHeight: 1.6 }}>
+              <strong style={{ color: COLORS.primary }}>+10 points</strong> for every event you compete in. Showing up is half the battle.
+            </div>
+          </Card>
+          <Card style={{ padding: 18, borderTop: `3px solid ${COLORS.gold}` }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.charcoal, marginBottom: 8, fontFamily: "'Cinzel', serif" }}>Win Your Heat</div>
+            <div style={{ fontSize: 13, color: COLORS.textGray, lineHeight: 1.6 }}>
+              <strong style={{ color: COLORS.gold }}>+50</strong> for 1st · <strong>+30</strong> for 2nd · <strong>+20</strong> for 3rd
+            </div>
+          </Card>
+          <Card style={{ padding: 18, borderTop: `3px solid ${COLORS.earth}` }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.charcoal, marginBottom: 8, fontFamily: "'Cinzel', serif" }}>Beat Your Best</div>
+            <div style={{ fontSize: 13, color: COLORS.textGray, lineHeight: 1.6 }}>
+              <strong style={{ color: COLORS.earth }}>+25 bonus</strong> when you set a personal best — beat your own previous score.
+            </div>
+          </Card>
+          <Card style={{ padding: 18, borderTop: `3px solid ${COLORS.primaryDark}` }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.charcoal, marginBottom: 8, fontFamily: "'Cinzel', serif" }}>Compete in All 4</div>
+            <div style={{ fontSize: 13, color: COLORS.textGray, lineHeight: 1.6 }}>
+              <strong style={{ color: COLORS.primary }}>1.5× multiplier</strong> on your day's points if you compete in all four events.
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Tier multipliers note */}
+      <Card style={{ marginBottom: 20, padding: 16, background: COLORS.charcoal, color: COLORS.cream, borderColor: COLORS.gold }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 28 }}>⚡</div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13, color: COLORS.gold, letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>HIGHER TIERS = MORE POINTS</div>
+            <div style={{ fontSize: 13, lineHeight: 1.6, opacity: 0.9 }}>
+              Bronze 1× · Silver 1.5× · Gold 2× · Platinum 3× — your tier choice multiplies all the points you earn that day.
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* The belt journey */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 12, textAlign: "center" }}>◆ THE BELT JOURNEY ◆</div>
+        <Card style={{ padding: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(95px, 1fr))", gap: 10 }}>
+            {[
+              { name: "White", min: 0, perk: "Welcome", color: "#FFFFFF", textColor: COLORS.charcoal, border: "#999" },
+              { name: "Blue", min: 250, perk: "Wristband + badge", color: "#1F4E79", textColor: "#FFFFFF", border: "#1F4E79" },
+              { name: "Purple", min: 750, perk: "Free Bronze entry/month", color: "#6B2D8F", textColor: "#FFFFFF", border: "#6B2D8F" },
+              { name: "Brown", min: 2000, perk: "Free Silver entry/month", color: "#6B4423", textColor: "#FFFFFF", border: "#6B4423" },
+              { name: "Black", min: 5000, perk: "Wall of Honor", color: "#1A1A1A", textColor: "#FFFFFF", border: "#1A1A1A" },
+              { name: "Champion", min: "Top 1/yr", perk: "₹50,000 + lifetime entry", color: COLORS.gold, textColor: COLORS.charcoal, border: COLORS.goldDark },
+            ].map((b, i) => (
+              <div key={b.name} style={{ textAlign: "center", padding: 8 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: "50%",
+                  background: b.color, border: `2px solid ${b.border}`,
+                  margin: "0 auto 8px",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: b.textColor, fontSize: 11, fontWeight: 700,
+                  fontFamily: "'Cinzel', serif",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+                }}>{i + 1}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.charcoal, marginBottom: 2, fontFamily: "'Cinzel', serif" }}>{b.name}</div>
+                <div style={{ fontSize: 10, color: COLORS.gold, fontWeight: 600, marginBottom: 4 }}>{typeof b.min === "number" ? `${b.min}+ pts` : b.min}</div>
+                <div style={{ fontSize: 10, color: COLORS.textGray, lineHeight: 1.4 }}>{b.perk}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Example calc */}
+      <Card variant="parchment" style={{ padding: 18 }}>
+        <div style={{ fontSize: 13, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 10 }}>◆ EXAMPLE ◆</div>
+        <div style={{ fontSize: 13, lineHeight: 1.7, color: COLORS.charcoal }}>
+          You enter all 4 events at <strong>Silver tier</strong>. You finish 1st in Push-ups (PB!), 2nd in Sprint, 3rd in Squats, and 4th in Plank.
+        </div>
+        <div style={{ marginTop: 12, padding: 12, background: "rgba(255,255,255,0.6)", borderRadius: 6, fontSize: 13, fontFamily: "monospace", color: COLORS.charcoal, lineHeight: 1.7 }}>
+          Push-ups: 10 + 50 (1st) + 25 (PB) = <strong>85</strong><br/>
+          Sprint: 10 + 30 (2nd) = <strong>40</strong><br/>
+          Squats: 10 + 20 (3rd) = <strong>30</strong><br/>
+          Plank: <strong>10</strong> (just for showing up)<br/>
+          <span style={{ color: COLORS.textGray }}>Subtotal: 165 pts</span><br/>
+          × 1.5 (Silver tier) = <strong style={{ color: COLORS.primary }}>247.5 pts</strong><br/>
+          × 1.5 (all-rounder bonus) = <strong style={{ color: COLORS.primary, fontSize: 16 }}>≈371 pts</strong>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 12, color: COLORS.textGray, fontStyle: "italic" }}>
+          One Sunday — almost a Blue Belt earned. That's the Rann.
+        </div>
+      </Card>
     </div>
 
     {/* Leaderboard preview — themed */}
@@ -588,7 +757,7 @@ const LoginPage = ({ onLogin, onNav }) => {
 // ============================================================
 // REGISTRATION
 // ============================================================
-const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
+const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {}, allBatches = [] }) => {
   const [step, setStep] = useState(1);
   const [name, setName] = useState(athlete?.name || "");
   const [phone, setPhone] = useState(athlete?.phone || "");
@@ -634,8 +803,26 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
   };
 
   const submit = async () => {
-    if (!paymentNote.trim()) { setError("Payment reference is required. Please pay first, then enter the UTR/transaction ID from your UPI app."); return; }
+    // Split selected events into confirmed (slots available) vs waitlist (full)
+    const confirmedEvents = [];
+    const waitlistEvents = [];
+    for (const e of selectedEvents) {
+      const t = tiers[e]; if (!t) continue;
+      const slot = getSlotInfo(slotCounts, e, t);
+      if (slot.isFull) waitlistEvents.push(e); else confirmedEvents.push(e);
+    }
+    const confirmedTiers = {};
+    for (const e of confirmedEvents) confirmedTiers[e] = tiers[e];
+    const confirmedCost = confirmedEvents.reduce((sum, e) => sum + (TIERS[tiers[e]]?.entry || 0), 0);
+
+    // Validate: payment ref required only if anything is confirmed
+    if (confirmedEvents.length > 0 && !paymentNote.trim()) {
+      setError("Payment reference is required for confirmed slots. Please pay first, then enter the UTR/transaction ID from your UPI app.");
+      return;
+    }
     if (!waiverAccepted || !medicalOk) { setError("You must accept the waiver and medical declaration"); return; }
+    if (confirmedEvents.length === 0 && waitlistEvents.length === 0) { setError("No events selected"); return; }
+
     setLoading(true); setError("");
     const cleanPhone = phone.replace(/\D/g, "");
     try {
@@ -652,17 +839,58 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
       const { error: aErr } = await supabase.from("athletes").upsert(athleteRecord, { onConflict: "phone" });
       if (aErr) throw aErr;
 
-      const registration = {
-        event_id: event.id, phone: cleanPhone, name: name.trim(),
-        events_selected: selectedEvents, tiers, is_all_rounder: isAllRounder,
-        total_cost: totalCost, payment_note: paymentNote.trim() || null,
-        payment_status: "pending",
-      };
-      const { error: rErr } = await supabase.from("registrations").upsert(registration, { onConflict: "event_id,phone" });
-      if (rErr) throw rErr;
+      let registration = null;
+      const batchTokens = [];
+      if (confirmedEvents.length > 0) {
+        registration = {
+          event_id: event.id, phone: cleanPhone, name: name.trim(),
+          events_selected: confirmedEvents, tiers: confirmedTiers, is_all_rounder: confirmedEvents.length === 4,
+          total_cost: confirmedCost, payment_note: paymentNote.trim() || null,
+          payment_status: "pending",
+        };
+        const { error: rErr } = await supabase.from("registrations").upsert(registration, { onConflict: "event_id,phone" });
+        if (rErr) throw rErr;
+
+        // Re-fetch latest batch_assignments to avoid stale state when many register simultaneously
+        const { data: freshBatches } = await supabase.from("batch_assignments").select("*").eq("event_id", event.id);
+        const liveBatches = freshBatches || [];
+
+        for (const evName of confirmedEvents) {
+          const evTier = confirmedTiers[evName];
+          // Skip if this athlete already has a token for this slot (re-registration)
+          const existingForMe = liveBatches.find((b) => b.phone === cleanPhone && b.event_name === evName && b.tier === evTier);
+          if (existingForMe) {
+            batchTokens.push(existingForMe);
+            continue;
+          }
+          const slot = nextBatchSlot(liveBatches, evName, evTier);
+          if (!slot) continue; // shouldn't happen since we checked capacity, but defensive
+          const token = formatToken(evTier, evName, slot.batch, slot.position);
+          const newAssignment = {
+            event_id: event.id, phone: cleanPhone, name: name.trim(),
+            event_name: evName, tier: evTier,
+            batch_number: slot.batch, position: slot.position, token,
+          };
+          const { error: bErr } = await supabase.from("batch_assignments").insert(newAssignment);
+          if (!bErr) {
+            batchTokens.push(newAssignment);
+            liveBatches.push(newAssignment);
+          }
+        }
+      }
+
+      const waitlistEntries = [];
+      for (const e of waitlistEvents) {
+        const entry = {
+          event_id: event.id, phone: cleanPhone, name: name.trim(),
+          event_name: e, tier: tiers[e],
+        };
+        const { error: wErr } = await supabase.from("waitlist").upsert(entry, { onConflict: "event_id,phone,event_name,tier" });
+        if (!wErr) waitlistEntries.push(entry);
+      }
 
       localStorage.setItem("rann_session_phone", cleanPhone);
-      onComplete(athleteRecord, registration);
+      onComplete(athleteRecord, registration, waitlistEntries, batchTokens);
     } catch (err) {
       setError("Could not save registration: " + (err?.message || "unknown error"));
     }
@@ -728,15 +956,52 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
 
             {selectedEvents.length > 0 && (
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Choose tier for each event</div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Choose tier for each event</div>
+                <div style={{ fontSize: 11, color: COLORS.textGray, marginBottom: 12, fontStyle: "italic" }}>
+                  ◆ 25 spots per tier · 5 batches of 5 athletes each ◆
+                </div>
                 {selectedEvents.map((e) => (
                   <div key={e} style={{ marginBottom: 12, padding: 12, background: COLORS.creamLight, borderRadius: 8 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{e}</div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {Object.entries(TIERS).map(([n, t]) => (
-                        <div key={n} onClick={() => setTiers({ ...tiers, [e]: n })} style={{ padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", background: tiers[e] === n ? t.color : "#FFFFFF", color: tiers[e] === n ? "#FFFFFF" : t.color, border: `1px solid ${t.color}` }}>{n} · ₹{t.entry}</div>
-                      ))}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 6 }}>
+                      {Object.entries(TIERS).map(([n, t]) => {
+                        const slot = getSlotInfo(slotCounts, e, n);
+                        const sc = getSlotColor(slot.status);
+                        const selected = tiers[e] === n;
+                        return (
+                          <div key={n} onClick={() => setTiers({ ...tiers, [e]: n })} style={{
+                            padding: "8px 10px",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            background: selected ? t.color : "#FFFFFF",
+                            color: selected ? "#FFFFFF" : t.color,
+                            border: `1.5px solid ${t.color}`,
+                            position: "relative",
+                            opacity: slot.isFull && !selected ? 0.92 : 1,
+                          }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>{n} · ₹{t.entry}</div>
+                            <div style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              letterSpacing: 0.5,
+                              padding: "2px 5px",
+                              borderRadius: 3,
+                              background: selected ? "rgba(255,255,255,0.25)" : sc.bg,
+                              color: selected ? "#FFFFFF" : sc.text,
+                              display: "inline-block",
+                              marginTop: 2,
+                            }}>
+                              {slot.isFull ? `${sc.label}` : `${slot.spotsLeft} spot${slot.spotsLeft === 1 ? "" : "s"} left`}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
+                    {tiers[e] && getSlotInfo(slotCounts, e, tiers[e]).isFull && (
+                      <div style={{ fontSize: 11, color: "#7B5500", background: "#FFF4D4", padding: "6px 10px", borderRadius: 4, marginTop: 8, lineHeight: 1.5 }}>
+                        ⚠ This tier is full. You'll be added to the waitlist for {e} · {tiers[e]}. If someone drops, we promote you in order and notify via WhatsApp. <strong>You will not be charged unless promoted.</strong>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -746,9 +1011,28 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
               <div style={{ background: COLORS.gold, color: COLORS.charcoal, padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 600 }}>🏆 All-Rounder bonus: 1.5× points multiplier on the day's total</div>
             )}
 
-            <div style={{ background: COLORS.charcoal, color: COLORS.cream, padding: 16, borderRadius: 8, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontSize: 13, opacity: 0.8 }}>Total entry fee</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.gold }}>₹{totalCost}</div>
+            <div style={{ background: COLORS.charcoal, color: COLORS.cream, padding: 16, borderRadius: 8, marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 13, opacity: 0.8 }}>Total entry fee (confirmed slots only)</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.gold }}>
+                  ₹{(() => {
+                    let total = 0;
+                    for (const e of selectedEvents) {
+                      const t = tiers[e]; if (!t) continue;
+                      const slot = getSlotInfo(slotCounts, e, t);
+                      if (!slot.isFull) total += TIERS[t].entry;
+                    }
+                    return total;
+                  })()}
+                </div>
+              </div>
+              {(() => {
+                const wl = selectedEvents.filter((e) => tiers[e] && getSlotInfo(slotCounts, e, tiers[e]).isFull);
+                if (wl.length === 0) return null;
+                return <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6, fontStyle: "italic" }}>
+                  {wl.length} event{wl.length === 1 ? "" : "s"} on waitlist (no charge unless promoted)
+                </div>;
+              })()}
             </div>
 
             {error && <div style={{ background: "#FDE8E8", color: COLORS.primary, padding: "10px 12px", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>{error}</div>}
@@ -760,20 +1044,41 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
           </>
         )}
 
-        {step === 3 && (
+        {step === 3 && (() => {
+          const confirmedEvents = selectedEvents.filter((e) => tiers[e] && !getSlotInfo(slotCounts, e, tiers[e]).isFull);
+          const waitlistEvents = selectedEvents.filter((e) => tiers[e] && getSlotInfo(slotCounts, e, tiers[e]).isFull);
+          const confirmedCost = confirmedEvents.reduce((s, e) => s + TIERS[tiers[e]].entry, 0);
+          const allWaitlist = confirmedCost === 0 && waitlistEvents.length > 0;
+          return (
           <>
-            <div style={{ background: COLORS.creamLight, padding: 16, borderRadius: 8, marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2, marginBottom: 6 }}>PAY VIA UPI</div>
-              <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 12 }}>{upiId}</div>
-              <div style={{ background: "#FFFFFF", padding: 12, borderRadius: 6, fontSize: 13, fontFamily: "monospace" }}>
-                Amount: <span style={{ color: COLORS.primary, fontWeight: 700 }}>₹{totalCost}</span>
+            {allWaitlist ? (
+              <div style={{ background: "#FFF4D4", border: `1px solid ${COLORS.gold}`, padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#7B5500", fontWeight: 700, letterSpacing: 2, marginBottom: 6 }}>WAITLIST ONLY</div>
+                <div style={{ fontSize: 13, color: COLORS.charcoal, lineHeight: 1.6 }}>
+                  All your selected slots are full. You'll join the waitlist for {waitlistEvents.length} event{waitlistEvents.length === 1 ? "" : "s"}. <strong>No payment needed now.</strong> If a spot opens, we'll WhatsApp you with a payment link.
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: COLORS.textGray, marginTop: 10, lineHeight: 1.5 }}>
-                Send ₹{totalCost} via any UPI app · Enter your name in the note field. We'll verify and confirm via WhatsApp within 24 hours.
+            ) : (
+              <div style={{ background: COLORS.creamLight, padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2, marginBottom: 6 }}>PAY VIA UPI</div>
+                <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 12 }}>{upiId}</div>
+                <div style={{ background: "#FFFFFF", padding: 12, borderRadius: 6, fontSize: 13, fontFamily: "monospace" }}>
+                  Amount: <span style={{ color: COLORS.primary, fontWeight: 700 }}>₹{confirmedCost}</span>
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.textGray, marginTop: 10, lineHeight: 1.5 }}>
+                  Send ₹{confirmedCost} via any UPI app · Enter your name in the note field. We'll verify and confirm via WhatsApp within 24 hours.
+                </div>
+                {waitlistEvents.length > 0 && (
+                  <div style={{ fontSize: 12, color: "#7B5500", background: "#FFF4D4", padding: "8px 10px", borderRadius: 4, marginTop: 10, lineHeight: 1.5 }}>
+                    ⚠ {waitlistEvents.length} event{waitlistEvents.length === 1 ? " is" : "s are"} full and will be added to the waitlist. You're not charged for those — only the ₹{confirmedCost} above.
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
-            <Input label="Payment reference / UPI transaction ID" value={paymentNote} onChange={setPaymentNote} placeholder="Last 6 digits of UTR or transaction ID" required helpText="Required. After paying, find this in your UPI app's transaction history." />
+            {!allWaitlist && (
+              <Input label="Payment reference / UPI transaction ID" value={paymentNote} onChange={setPaymentNote} placeholder="Last 6 digits of UTR or transaction ID" required helpText="Required. After paying, find this in your UPI app's transaction history." />
+            )}
 
             <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 16, marginTop: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, letterSpacing: 0.5 }}>DECLARATIONS</div>
@@ -791,10 +1096,11 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
 
             <div style={{ display: "flex", gap: 8 }}>
               <Button onClick={() => setStep(2)} variant="light">← Back</Button>
-              <Button onClick={submit} variant="primary" style={{ flex: 1 }} disabled={loading}>{loading ? "Registering..." : "Step into the Rann →"}</Button>
+              <Button onClick={submit} variant="primary" style={{ flex: 1 }} disabled={loading}>{loading ? "Registering..." : (allWaitlist ? "Join Waitlist →" : "Step into the Rann →")}</Button>
             </div>
           </>
-        )}
+          );
+        })()}
       </Card>
     </div>
   );
@@ -803,41 +1109,123 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
 // ============================================================
 // SUCCESS PAGE
 // ============================================================
-const SuccessPage = ({ registration, onNav, upiId }) => (
-  <div style={{ maxWidth: 500, margin: "40px auto", textAlign: "center" }}>
-    <div style={{ fontSize: 64, marginBottom: 8 }}>⚔️</div>
-    <div style={{ fontSize: 14, color: COLORS.gold, letterSpacing: 3, fontWeight: 700, marginBottom: 6 }}>YOU'RE IN</div>
-    <div style={{ fontSize: 32, fontFamily: "'Cinzel', serif", fontWeight: 600, marginBottom: 16, color: COLORS.charcoal }}>Step into the Rann</div>
-    <Card style={{ textAlign: "left", marginBottom: 20 }}>
-      <div style={{ fontSize: 13, color: COLORS.textGray, marginBottom: 8 }}>Your registration:</div>
-      <div style={{ marginBottom: 12 }}>
-        {registration?.events_selected?.map((e) => (
-          <div key={e} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, borderBottom: `1px dashed ${COLORS.borderLight}` }}>
-            <span>{e}</span>
-            <span style={{ fontWeight: 600 }}>{registration.tiers[e]} · ₹{TIERS[registration.tiers[e]]?.entry}</span>
+const SuccessPage = ({ registration, waitlistEntries = [], batchTokens = [], onNav, upiId }) => {
+  const hasConfirmed = registration && registration.events_selected?.length > 0;
+  const hasWaitlist = waitlistEntries && waitlistEntries.length > 0;
+  const hasTokens = batchTokens && batchTokens.length > 0;
+  const onlyWaitlist = !hasConfirmed && hasWaitlist;
+  return (
+  <div style={{ maxWidth: 520, margin: "40px auto", textAlign: "center" }}>
+    <div style={{ fontSize: 64, marginBottom: 8 }}>{onlyWaitlist ? "⏳" : "⚔️"}</div>
+    <div style={{ fontSize: 14, color: COLORS.gold, letterSpacing: 3, fontWeight: 700, marginBottom: 6 }}>
+      {onlyWaitlist ? "ON THE WAITLIST" : "YOU'RE IN"}
+    </div>
+    <div style={{ fontSize: 30, fontFamily: "'Cinzel', serif", fontWeight: 600, marginBottom: 20, color: COLORS.charcoal }}>
+      {onlyWaitlist ? "Waiting in the wings" : "Step into the Rann"}
+    </div>
+
+    {hasConfirmed && (
+      <Card style={{ textAlign: "left", marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: "#1F7A3A", letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>◆ CONFIRMED ◆</div>
+        <div style={{ marginBottom: 12 }}>
+          {registration?.events_selected?.map((e) => (
+            <div key={e} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, borderBottom: `1px dashed ${COLORS.borderLight}` }}>
+              <span>{e}</span>
+              <span style={{ fontWeight: 600 }}>{registration.tiers[e]} · ₹{TIERS[registration.tiers[e]]?.entry}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, fontWeight: 700 }}>
+          <span>Total to pay</span><span style={{ color: COLORS.primary }}>₹{registration?.total_cost}</span>
+        </div>
+      </Card>
+    )}
+
+    {hasTokens && (
+      <Card variant="dark" style={{ textAlign: "left", marginBottom: 16, padding: 22, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", right: -20, top: -20, opacity: 0.08, pointerEvents: "none" }}>
+          <SwordsEmblem size={140} color={COLORS.gold} />
+        </div>
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>◆ YOUR BATTLE TOKENS ◆</div>
+          <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 14, lineHeight: 1.5 }}>
+            Show these at the venue. Each token tells the volunteers your tier, event, batch, and position.
+          </div>
+          {batchTokens.map((t, i) => (
+            <div key={i} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "10px 12px",
+              background: i % 2 === 0 ? "rgba(212, 160, 23, 0.08)" : "rgba(212, 160, 23, 0.04)",
+              borderRadius: 6, marginBottom: 6,
+              border: `1px solid ${COLORS.gold}40`,
+            }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream }}>{t.event_name}</div>
+                <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · Batch {t.batch_number} · Position {t.position}</div>
+              </div>
+              <div style={{
+                fontFamily: "'Cinzel', monospace", fontSize: 18, fontWeight: 700,
+                color: COLORS.gold, letterSpacing: 1,
+                padding: "6px 12px",
+                background: "rgba(0,0,0,0.3)",
+                borderRadius: 4,
+                border: `1px solid ${COLORS.gold}`,
+              }}>{t.token}</div>
+            </div>
+          ))}
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 10, fontStyle: "italic", lineHeight: 1.5 }}>
+            Save a screenshot of this page or check your dashboard anytime.
+          </div>
+        </div>
+      </Card>
+    )}
+
+    {hasWaitlist && (
+      <Card variant="parchment" style={{ textAlign: "left", marginBottom: 16, borderColor: COLORS.gold }}>
+        <div style={{ fontSize: 11, color: "#7B5500", letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>◆ WAITLISTED ◆</div>
+        <div style={{ fontSize: 13, color: COLORS.charcoal, marginBottom: 12, lineHeight: 1.6 }}>
+          These slots were full when you registered. We'll WhatsApp you the moment a spot opens — no charge unless promoted.
+        </div>
+        {waitlistEntries.map((w, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, borderBottom: i < waitlistEntries.length - 1 ? `1px dashed ${COLORS.borderLight}` : "none" }}>
+            <span>{w.event_name}</span>
+            <span style={{ fontWeight: 600, color: TIERS[w.tier]?.color }}>{w.tier} · waiting</span>
           </div>
         ))}
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, fontWeight: 700 }}>
-        <span>Total to pay</span><span style={{ color: COLORS.primary }}>₹{registration?.total_cost}</span>
-      </div>
-    </Card>
-    <Card style={{ background: COLORS.creamLight, textAlign: "left", marginBottom: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Next steps:</div>
-      <ol style={{ fontSize: 13, lineHeight: 1.8, marginLeft: 20, padding: 0 }}>
-        <li>Pay <strong>₹{registration?.total_cost}</strong> to <strong style={{ fontFamily: "monospace" }}>{upiId}</strong> via any UPI app</li>
-        <li>You'll get a WhatsApp confirmation within 24 hours</li>
-        <li>Show up Sunday morning. 6:15 AM. Bring ID, water, workout clothes.</li>
-      </ol>
-    </Card>
+      </Card>
+    )}
+
+    {hasConfirmed && (
+      <Card style={{ background: COLORS.creamLight, textAlign: "left", marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Next steps:</div>
+        <ol style={{ fontSize: 13, lineHeight: 1.8, marginLeft: 20, padding: 0 }}>
+          <li>Pay <strong>₹{registration?.total_cost}</strong> to <strong style={{ fontFamily: "monospace" }}>{upiId}</strong> via any UPI app</li>
+          <li>You'll get a WhatsApp confirmation within 24 hours</li>
+          <li>Show up Sunday. 6:15 AM. Bring ID, water, workout clothes.</li>
+          {hasTokens && <li>Volunteer will call out your token <strong style={{ fontFamily: "monospace", color: COLORS.primary }}>{batchTokens[0]?.token}</strong> when your heat is up.</li>}
+        </ol>
+      </Card>
+    )}
+    {onlyWaitlist && (
+      <Card style={{ background: COLORS.creamLight, textAlign: "left", marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>What happens next:</div>
+        <ol style={{ fontSize: 13, lineHeight: 1.8, marginLeft: 20, padding: 0 }}>
+          <li>You're queued in order — first in, first promoted</li>
+          <li>If a spot opens, we'll WhatsApp you with payment instructions</li>
+          <li>You only pay if you're promoted — no risk</li>
+        </ol>
+      </Card>
+    )}
+
     <Button onClick={() => onNav("dashboard")} variant="primary" size="lg" style={{ width: "100%" }}>Go to my dashboard →</Button>
   </div>
-);
+  );
+};
 
 // ============================================================
 // DASHBOARD
 // ============================================================
-const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allAthletes }) => {
+const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allAthletes, myBatchTokens = [], myWaitlist = [] }) => {
   const points = athlete.total_points || 0;
   const belt = getBelt(points);
   const nextBelt = getNextBelt(points);
@@ -901,7 +1289,7 @@ const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allA
       {currentRegistration && (
         <>
           <SectionHeader title="Upcoming Event" subtitle="You're registered" />
-          <Card style={{ marginBottom: 24, borderLeft: `4px solid ${COLORS.gold}` }}>
+          <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.gold}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
               <div>
                 <div style={{ fontSize: 12, color: COLORS.textGray, fontWeight: 600 }}>EVENT #{currentRegistration.event_id?.replace("event_", "")}</div>
@@ -921,6 +1309,57 @@ const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allA
             </div>
           </Card>
         </>
+      )}
+
+      {myBatchTokens && myBatchTokens.length > 0 && (
+        <Card variant="dark" style={{ marginBottom: 24, padding: 22, position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", right: -20, top: -20, opacity: 0.1, pointerEvents: "none" }}>
+            <SwordsEmblem size={150} color={COLORS.gold} />
+          </div>
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>◆ YOUR BATTLE TOKENS ◆</div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 14, lineHeight: 1.5 }}>
+              Show these at the venue check-in. Each token tells volunteers your tier, event, batch, and position.
+            </div>
+            {myBatchTokens.map((t, i) => (
+              <div key={i} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "10px 12px",
+                background: i % 2 === 0 ? "rgba(212, 160, 23, 0.08)" : "rgba(212, 160, 23, 0.04)",
+                borderRadius: 6, marginBottom: 6,
+                border: `1px solid ${COLORS.gold}40`,
+              }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream }}>{t.event_name}</div>
+                  <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · Batch {t.batch_number} · Position {t.position}</div>
+                </div>
+                <div style={{
+                  fontFamily: "'Cinzel', monospace", fontSize: 18, fontWeight: 700,
+                  color: COLORS.gold, letterSpacing: 1,
+                  padding: "6px 12px",
+                  background: "rgba(0,0,0,0.3)",
+                  borderRadius: 4,
+                  border: `1px solid ${COLORS.gold}`,
+                }}>{t.token}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {myWaitlist && myWaitlist.length > 0 && (
+        <Card variant="parchment" style={{ marginBottom: 24, borderColor: COLORS.gold }}>
+          <div style={{ fontSize: 11, color: "#7B5500", letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>◆ ON WAITLIST ◆</div>
+          <div style={{ fontSize: 12, color: COLORS.charcoal, marginBottom: 12, lineHeight: 1.6 }}>
+            These slots were full when you registered. We'll WhatsApp if a spot opens.
+          </div>
+          {myWaitlist.map((w, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13, borderBottom: i < myWaitlist.length - 1 ? `1px dashed ${COLORS.borderLight}` : "none" }}>
+              <span>{w.event_name}</span>
+              <span style={{ fontWeight: 600, color: TIERS[w.tier]?.color }}>{w.tier} · waiting</span>
+            </div>
+          ))}
+        </Card>
       )}
 
       {eventResults && eventResults.length > 0 && (
@@ -1023,7 +1462,7 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
 // ============================================================
 // ADMIN PANEL — registrations, results CSV import, Excel export, event mgmt
 // ============================================================
-const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, event, upiId, allResults }) => {
+const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, event, upiId, allResults, slotCounts = {}, allWaitlist = [], allBatches = [] }) => {
   const [tab, setTab] = useState("registrations");
   const [csvInput, setCsvInput] = useState("");
   const [csvStatus, setCsvStatus] = useState("");
@@ -1040,6 +1479,139 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
   const unverifyPayment = async (eventId, phone) => {
     await supabase.from("registrations").update({ payment_status: "pending", verified_at: null }).eq("event_id", eventId).eq("phone", phone);
     refreshData();
+  };
+
+  // Promote a waitlisted athlete to a confirmed registration for that event×tier
+  const promoteFromWaitlist = async (waitlistRow) => {
+    if (!confirm(`Promote ${waitlistRow.name} into ${waitlistRow.event_name} (${waitlistRow.tier})? They'll be added to the registration and need to pay separately.`)) return;
+    try {
+      const { data: existing } = await supabase.from("registrations")
+        .select("*").eq("event_id", waitlistRow.event_id).eq("phone", waitlistRow.phone);
+      const reg = existing?.[0];
+      if (reg) {
+        const newEvents = Array.from(new Set([...(reg.events_selected || []), waitlistRow.event_name]));
+        const newTiers = { ...(reg.tiers || {}), [waitlistRow.event_name]: waitlistRow.tier };
+        const newCost = newEvents.reduce((s, e) => s + (TIERS[newTiers[e]]?.entry || 0), 0);
+        await supabase.from("registrations").update({
+          events_selected: newEvents, tiers: newTiers, total_cost: newCost,
+          is_all_rounder: newEvents.length === 4, payment_status: "pending",
+        }).eq("event_id", waitlistRow.event_id).eq("phone", waitlistRow.phone);
+      } else {
+        await supabase.from("registrations").insert({
+          event_id: waitlistRow.event_id, phone: waitlistRow.phone, name: waitlistRow.name,
+          events_selected: [waitlistRow.event_name], tiers: { [waitlistRow.event_name]: waitlistRow.tier },
+          is_all_rounder: false, total_cost: TIERS[waitlistRow.tier]?.entry || 0,
+          payment_status: "pending",
+        });
+      }
+
+      // Generate batch token for the promoted athlete
+      const { data: freshBatches } = await supabase.from("batch_assignments").select("*").eq("event_id", waitlistRow.event_id);
+      const liveBatches = freshBatches || [];
+      const slot = nextBatchSlot(liveBatches, waitlistRow.event_name, waitlistRow.tier);
+      let assignedToken = null;
+      if (slot) {
+        assignedToken = formatToken(waitlistRow.tier, waitlistRow.event_name, slot.batch, slot.position);
+        await supabase.from("batch_assignments").insert({
+          event_id: waitlistRow.event_id, phone: waitlistRow.phone, name: waitlistRow.name,
+          event_name: waitlistRow.event_name, tier: waitlistRow.tier,
+          batch_number: slot.batch, position: slot.position, token: assignedToken,
+        });
+      }
+
+      await supabase.from("waitlist").update({ promoted: true }).eq("id", waitlistRow.id);
+      refreshData();
+      alert(`Promoted! Token: ${assignedToken || "(could not assign — check capacity)"}\nSend WhatsApp to ${waitlistRow.name} (+91${waitlistRow.phone}) with token + payment instructions.`);
+    } catch (err) {
+      alert("Failed to promote: " + err.message);
+    }
+  };
+
+  const removeFromWaitlist = async (id) => {
+    if (!confirm("Remove from waitlist?")) return;
+    await supabase.from("waitlist").delete().eq("id", id);
+    refreshData();
+  };
+
+  // Swap two athletes' batch positions within the same (event × tier)
+  const swapBatchPositions = async (a, b) => {
+    if (a.event_name !== b.event_name || a.tier !== b.tier) {
+      alert("Can only swap athletes within the same event and tier.");
+      return;
+    }
+    if (!confirm(`Swap ${a.name} (${a.token}) ↔ ${b.name} (${b.token})?`)) return;
+    try {
+      // Two-step swap to avoid unique constraint collision
+      await supabase.from("batch_assignments").update({
+        batch_number: -1, position: -1, token: "TEMP-" + a.id,
+      }).eq("id", a.id);
+      await supabase.from("batch_assignments").update({
+        batch_number: a.batch_number, position: a.position, token: a.token,
+      }).eq("id", b.id);
+      await supabase.from("batch_assignments").update({
+        batch_number: b.batch_number, position: b.position, token: b.token,
+      }).eq("id", a.id);
+      refreshData();
+    } catch (err) {
+      alert("Swap failed: " + err.message);
+    }
+  };
+
+  // Reassign an athlete to specific batch+position (used in manual move)
+  const moveBatchPosition = async (a, newBatch, newPosition) => {
+    const newToken = formatToken(a.tier, a.event_name, newBatch, newPosition);
+    // Check if target is occupied
+    const { data: occupant } = await supabase.from("batch_assignments")
+      .select("*").eq("event_id", a.event_id).eq("event_name", a.event_name).eq("tier", a.tier)
+      .eq("batch_number", newBatch).eq("position", newPosition).maybeSingle();
+    if (occupant) {
+      // Swap them
+      return swapBatchPositions(a, occupant);
+    }
+    try {
+      await supabase.from("batch_assignments").update({
+        batch_number: newBatch, position: newPosition, token: newToken,
+      }).eq("id", a.id);
+      refreshData();
+    } catch (err) {
+      alert("Move failed: " + err.message);
+    }
+  };
+
+  // Regenerate ALL tokens for the current event in registration order (admin nuclear option)
+  const regenerateAllTokens = async () => {
+    if (!confirm("Regenerate ALL batch tokens for this event? This rebuilds tokens in registration order. Use only if assignments got messy.")) return;
+    try {
+      // Build ordered list from registrations, sorted by registered_at
+      const { data: regs } = await supabase.from("registrations").select("*").eq("event_id", event.id).order("registered_at", { ascending: true });
+      const allOrdered = [];
+      for (const r of (regs || [])) {
+        for (const evName of (r.events_selected || [])) {
+          allOrdered.push({ phone: r.phone, name: r.name, event_name: evName, tier: r.tiers?.[evName] });
+        }
+      }
+      // Wipe all existing for this event
+      await supabase.from("batch_assignments").delete().eq("event_id", event.id);
+      // Reassign in order
+      const live = [];
+      for (const item of allOrdered) {
+        if (!item.tier) continue;
+        const slot = nextBatchSlot(live, item.event_name, item.tier);
+        if (!slot) continue;
+        const token = formatToken(item.tier, item.event_name, slot.batch, slot.position);
+        const newRow = {
+          event_id: event.id, phone: item.phone, name: item.name,
+          event_name: item.event_name, tier: item.tier,
+          batch_number: slot.batch, position: slot.position, token,
+        };
+        await supabase.from("batch_assignments").insert(newRow);
+        live.push(newRow);
+      }
+      refreshData();
+      alert(`Regenerated ${allOrdered.length} tokens.`);
+    } catch (err) {
+      alert("Regenerate failed: " + err.message);
+    }
   };
 
   const saveEventConfig = async () => {
@@ -1188,6 +1760,24 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lbData), "Leaderboard");
 
+      // Batch sheet: tokens for the venue
+      const batchRows = (allBatches || [])
+        .filter((b) => b.event_id === event?.id)
+        .sort((a, b) => {
+          const evOrder = EVENTS.indexOf(a.event_name) - EVENTS.indexOf(b.event_name);
+          if (evOrder !== 0) return evOrder;
+          const tierOrder = Object.keys(TIERS).indexOf(a.tier) - Object.keys(TIERS).indexOf(b.tier);
+          if (tierOrder !== 0) return tierOrder;
+          if (a.batch_number !== b.batch_number) return a.batch_number - b.batch_number;
+          return a.position - b.position;
+        })
+        .map((b) => ({
+          Token: b.token, Event: b.event_name, Tier: b.tier,
+          Batch: b.batch_number, Position: b.position,
+          Name: b.name, Phone: b.phone,
+        }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(batchRows), "Batches");
+
       const today = new Date().toISOString().split("T")[0];
       XLSX.writeFile(wb, `Rann_Backup_${today}.xlsx`);
     } catch (e) {
@@ -1224,6 +1814,9 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
 
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
         <Button onClick={() => setTab("registrations")} variant={tab === "registrations" ? "primary" : "light"} size="sm">Registrations</Button>
+        <Button onClick={() => setTab("capacity")} variant={tab === "capacity" ? "primary" : "light"} size="sm">Capacity</Button>
+        <Button onClick={() => setTab("waitlist")} variant={tab === "waitlist" ? "primary" : "light"} size="sm">Waitlist</Button>
+        <Button onClick={() => setTab("batches")} variant={tab === "batches" ? "primary" : "light"} size="sm">Batch Sheet</Button>
         <Button onClick={() => setTab("results")} variant={tab === "results" ? "primary" : "light"} size="sm">Import Results</Button>
         <Button onClick={() => setTab("event")} variant={tab === "event" ? "primary" : "light"} size="sm">Event Config</Button>
         <Button onClick={() => setTab("danger")} variant={tab === "danger" ? "primary" : "light"} size="sm">Danger Zone</Button>
@@ -1258,6 +1851,175 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
             </div>
           )}
         </Card>
+      )}
+
+      {tab === "capacity" && (
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Capacity overview · {event?.id}</div>
+          <div style={{ fontSize: 12, color: COLORS.textGray, marginBottom: 16, lineHeight: 1.6 }}>
+            Hard cap of <strong>{MAX_PER_SLOT} spots per (event × tier)</strong> = 5 batches of 5. Once full, new registrations route to the waitlist.
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 500 }}>
+              <thead>
+                <tr style={{ background: COLORS.charcoal, color: COLORS.cream }}>
+                  <th style={{ padding: 10, textAlign: "left", fontWeight: 600, letterSpacing: 1 }}>EVENT</th>
+                  {Object.keys(TIERS).map((t) => (
+                    <th key={t} style={{ padding: 10, textAlign: "center", fontWeight: 600, color: TIERS[t].color === "#D4A017" ? COLORS.gold : COLORS.cream }}>{t.toUpperCase()}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {EVENTS.map((e, i) => (
+                  <tr key={e} style={{ background: i % 2 === 0 ? COLORS.creamLight : "#FFFFFF" }}>
+                    <td style={{ padding: 10, fontWeight: 700 }}>{e}</td>
+                    {Object.keys(TIERS).map((t) => {
+                      const slot = getSlotInfo(slotCounts, e, t);
+                      const sc = getSlotColor(slot.status);
+                      return (
+                        <td key={t} style={{ padding: 8, textAlign: "center" }}>
+                          <div style={{ display: "inline-block", padding: "4px 10px", borderRadius: 4, background: sc.bg, color: sc.text, fontSize: 12, fontWeight: 700, minWidth: 60 }}>
+                            {slot.registered}/{MAX_PER_SLOT}
+                          </div>
+                          {slot.waitlisted > 0 && (
+                            <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 3 }}>+{slot.waitlisted} waiting</div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: 16, padding: 12, background: COLORS.creamLight, borderRadius: 6, fontSize: 12, color: COLORS.textGray, lineHeight: 1.6 }}>
+            <strong>Legend:</strong> <span style={{ color: "#2D7A47" }}>Open</span> · <span style={{ color: "#5C8A2A" }}>Filling fast</span> · <span style={{ color: "#C97F12" }}>Almost full</span> · <span style={{ color: "#7B1A1A" }}>Full (waitlist active)</span>
+          </div>
+        </Card>
+      )}
+
+      {tab === "waitlist" && (
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Waitlist · {event?.id}</div>
+          <div style={{ fontSize: 12, color: COLORS.textGray, marginBottom: 16, lineHeight: 1.6 }}>
+            Athletes queued for full slots. Promote in order of join time. Promoting adds them to the registration as <strong>pending payment</strong> — send them a WhatsApp with payment instructions.
+          </div>
+          {(() => {
+            const wlForEvent = (allWaitlist || []).filter((w) => w.event_id === event?.id && !w.promoted);
+            if (wlForEvent.length === 0) {
+              return <div style={{ color: COLORS.textGray, fontStyle: "italic", padding: 16, textAlign: "center" }}>No one waiting. All slots have room.</div>;
+            }
+            // Group by event_name + tier, sort by joined_at
+            const groups = {};
+            for (const w of wlForEvent) {
+              const k = `${w.event_name}|${w.tier}`;
+              if (!groups[k]) groups[k] = [];
+              groups[k].push(w);
+            }
+            for (const k of Object.keys(groups)) {
+              groups[k].sort((a, b) => (a.joined_at || "").localeCompare(b.joined_at || ""));
+            }
+            return Object.entries(groups).map(([k, rows]) => {
+              const [evName, tier] = k.split("|");
+              return (
+                <div key={k} style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: TIERS[tier]?.color }}>
+                    {evName} · {tier} <span style={{ color: COLORS.textGray, fontWeight: 400 }}>({rows.length} waiting)</span>
+                  </div>
+                  {rows.map((w, idx) => (
+                    <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: idx === 0 ? COLORS.creamLight : "#FFFFFF", border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, marginBottom: 4 }}>
+                      <div style={{ width: 24, height: 24, borderRadius: "50%", background: idx === 0 ? COLORS.gold : COLORS.borderLight, color: COLORS.charcoal, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 11 }}>{idx + 1}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{w.name}</div>
+                        <div style={{ fontSize: 11, color: COLORS.textGray }}>{formatPhone(w.phone)} · joined {new Date(w.joined_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+                      </div>
+                      <Button onClick={() => promoteFromWaitlist(w)} variant="primary" size="sm">Promote</Button>
+                      <Button onClick={() => removeFromWaitlist(w.id)} variant="light" size="sm">Remove</Button>
+                    </div>
+                  ))}
+                </div>
+              );
+            });
+          })()}
+        </Card>
+      )}
+
+      {tab === "batches" && (
+        <div>
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Sunday Morning Batch Sheet</div>
+                <div style={{ fontSize: 12, color: COLORS.textGray, lineHeight: 1.6 }}>
+                  Print this and bring to the venue. Each athlete has a token like <span style={{ fontFamily: "monospace", color: COLORS.primary }}>B-PU-2-04</span> = Bronze, Push-ups, Batch 2, Position 4.
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <Button onClick={() => window.print()} variant="dark" size="sm">🖨 Print</Button>
+                <Button onClick={regenerateAllTokens} variant="light" size="sm">↻ Regenerate</Button>
+              </div>
+            </div>
+          </Card>
+
+          {(() => {
+            const batchesForEvent = (allBatches || []).filter((b) => b.event_id === event?.id);
+            if (batchesForEvent.length === 0) {
+              return <Card style={{ textAlign: "center", color: COLORS.textGray, padding: 32, fontStyle: "italic" }}>No batch tokens yet. Tokens are generated automatically as athletes register.</Card>;
+            }
+            // Group: event_name -> tier -> batch_number -> [rows sorted by position]
+            const tree = {};
+            for (const b of batchesForEvent) {
+              if (!tree[b.event_name]) tree[b.event_name] = {};
+              if (!tree[b.event_name][b.tier]) tree[b.event_name][b.tier] = {};
+              if (!tree[b.event_name][b.tier][b.batch_number]) tree[b.event_name][b.tier][b.batch_number] = [];
+              tree[b.event_name][b.tier][b.batch_number].push(b);
+            }
+            return EVENTS.map((evName) => {
+              const tierGroups = tree[evName];
+              if (!tierGroups) return null;
+              return (
+                <div key={evName} style={{ marginBottom: 28, pageBreakInside: "avoid" }}>
+                  <div style={{ background: COLORS.charcoal, color: COLORS.cream, padding: "10px 16px", borderRadius: 6, marginBottom: 10, fontFamily: "'Cinzel', serif", fontSize: 16, fontWeight: 700, letterSpacing: 1 }}>
+                    {evName.toUpperCase()}
+                  </div>
+                  {Object.keys(TIERS).map((tier) => {
+                    const batches = tierGroups[tier];
+                    if (!batches) return null;
+                    return (
+                      <div key={tier} style={{ marginBottom: 16, paddingLeft: 8 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TIERS[tier].color, marginBottom: 6, letterSpacing: 0.5 }}>{tier} Tier</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                          {[1, 2, 3, 4, 5].filter((bn) => batches[bn]).map((bn) => {
+                            const rows = batches[bn].sort((a, b) => a.position - b.position);
+                            return (
+                              <Card key={bn} style={{ padding: 12, borderTop: `3px solid ${TIERS[tier].color}` }}>
+                                <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 1, fontWeight: 700, marginBottom: 6 }}>BATCH {bn}</div>
+                                {rows.map((r) => (
+                                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", fontSize: 12, borderBottom: `1px dashed ${COLORS.borderLight}` }}>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontWeight: 600 }}>{r.position}. {r.name}</div>
+                                      <div style={{ fontSize: 10, color: COLORS.textGray }}>{formatPhone(r.phone)}</div>
+                                    </div>
+                                    <div style={{ fontFamily: "monospace", fontSize: 11, color: COLORS.primary, fontWeight: 700 }}>{r.token}</div>
+                                  </div>
+                                ))}
+                                {Array.from({ length: BATCH_SIZE - rows.length }).map((_, i) => (
+                                  <div key={`empty-${i}`} style={{ padding: "5px 0", fontSize: 11, color: COLORS.textGray, fontStyle: "italic", borderBottom: `1px dashed ${COLORS.borderLight}` }}>
+                                    {rows.length + i + 1}. (empty slot)
+                                  </div>
+                                ))}
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            });
+          })()}
+        </div>
       )}
 
       {tab === "results" && (
@@ -1379,19 +2141,47 @@ export default function App() {
   const [eventResults, setEventResults] = useState([]);
   const [eventRecords, setEventRecords] = useState([]);
   const [lastRegistration, setLastRegistration] = useState(null);
+  const [lastWaitlistEntries, setLastWaitlistEntries] = useState([]);
+  const [allWaitlist, setAllWaitlist] = useState([]);
+  const [allBatches, setAllBatches] = useState([]);
+  const [lastBatchTokens, setLastBatchTokens] = useState([]);
+  const [slotCounts, setSlotCounts] = useState({});
   const [isAdminAuthed, setIsAdminAuthed] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  const computeSlotCounts = useCallback((regs, waitlist, eventId) => {
+    const counts = {};
+    for (const r of (regs || [])) {
+      if (r.event_id !== eventId) continue;
+      for (const evName of (r.events_selected || [])) {
+        const tier = r.tiers?.[evName];
+        if (!tier) continue;
+        const k = slotKey(evName, tier);
+        if (!counts[k]) counts[k] = { registered: 0, waitlisted: 0 };
+        counts[k].registered += 1;
+      }
+    }
+    for (const w of (waitlist || [])) {
+      if (w.event_id !== eventId || w.promoted) continue;
+      const k = slotKey(w.event_name, w.tier);
+      if (!counts[k]) counts[k] = { registered: 0, waitlisted: 0 };
+      counts[k].waitlisted += 1;
+    }
+    return counts;
+  }, []);
 
   const refreshData = useCallback(async () => {
     if (!supabaseEnabled) { setLoaded(true); return; }
     try {
-      const [{ data: events }, { data: cfg }, { data: athletes }, { data: regs }, { data: results }, { data: records }] = await Promise.all([
+      const [{ data: events }, { data: cfg }, { data: athletes }, { data: regs }, { data: results }, { data: records }, { data: waitlist }, { data: batches }] = await Promise.all([
         supabase.from("events").select("*").eq("is_current", true).order("created_at", { ascending: false }).limit(1),
         supabase.from("config").select("*").eq("key", "upi_id").single(),
         supabase.from("athletes").select("*"),
         supabase.from("registrations").select("*"),
         supabase.from("event_results").select("*"),
         supabase.from("event_records").select("*"),
+        supabase.from("waitlist").select("*"),
+        supabase.from("batch_assignments").select("*"),
       ]);
       const cur = events?.[0] || null;
       setEvent(cur);
@@ -1400,6 +2190,9 @@ export default function App() {
       setAllRegistrations(regs || []);
       setAllResults(results || []);
       setEventRecords(records || []);
+      setAllWaitlist(waitlist || []);
+      setAllBatches(batches || []);
+      if (cur) setSlotCounts(computeSlotCounts(regs, waitlist, cur.id));
 
       const sessionPhone = localStorage.getItem("rann_session_phone");
       if (sessionPhone) {
@@ -1413,13 +2206,16 @@ export default function App() {
       console.error("refresh failed", e);
     }
     setLoaded(true);
-  }, []);
+  }, [computeSlotCounts]);
 
   useEffect(() => { refreshData(); }, [refreshData]);
 
   const handleLogin = (a) => { setAthlete(a); setView("dashboard"); refreshData(); };
   const handleLogout = () => { localStorage.removeItem("rann_session_phone"); setAthlete(null); setEventResults([]); setView("home"); };
-  const handleRegistrationComplete = (a, reg) => { setAthlete(a); setLastRegistration(reg); setView("success"); setTimeout(() => refreshData(), 100); };
+  const handleRegistrationComplete = (a, reg, waitlistEntries = [], batchTokens = []) => {
+    setAthlete(a); setLastRegistration(reg); setLastWaitlistEntries(waitlistEntries || []); setLastBatchTokens(batchTokens || []);
+    setView("success"); setTimeout(() => refreshData(), 100);
+  };
 
   const myCurrentRegistration = useMemo(() => {
     if (!athlete || !event) return null;
@@ -1485,15 +2281,15 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px 60px" }}>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 14px 60px" }}>
         {view === "home" && <HomePage event={event} athlete={athlete} onNav={setView} leaderboardPreview={leaderboardPreview} />}
-        {view === "register" && <RegisterPage event={event} upiId={upiId} onComplete={handleRegistrationComplete} onNav={setView} athlete={athlete} />}
+        {view === "register" && <RegisterPage event={event} upiId={upiId} onComplete={handleRegistrationComplete} onNav={setView} athlete={athlete} slotCounts={slotCounts} allBatches={allBatches} />}
         {view === "login" && <LoginPage onLogin={handleLogin} onNav={setView} />}
-        {view === "success" && <SuccessPage registration={lastRegistration} onNav={setView} upiId={upiId} />}
-        {view === "dashboard" && athlete && <DashboardPage athlete={athlete} currentRegistration={myCurrentRegistration} eventResults={eventResults} onNav={setView} allAthletes={allAthletes} />}
+        {view === "success" && <SuccessPage registration={lastRegistration} waitlistEntries={lastWaitlistEntries} batchTokens={lastBatchTokens} onNav={setView} upiId={upiId} />}
+        {view === "dashboard" && athlete && <DashboardPage athlete={athlete} currentRegistration={myCurrentRegistration} eventResults={eventResults} onNav={setView} allAthletes={allAthletes} myBatchTokens={(allBatches || []).filter((b) => b.phone === athlete.phone && b.event_id === event?.id)} myWaitlist={(allWaitlist || []).filter((w) => w.phone === athlete.phone && w.event_id === event?.id && !w.promoted)} />}
         {view === "leaderboard" && <LeaderboardPage allAthletes={allAthletes} eventRecords={eventRecords} onNav={setView} currentAthletePhone={athlete?.phone} />}
         {view === "admin-login" && <AdminLogin onLogin={() => { setIsAdminAuthed(true); setView("admin"); }} onCancel={() => setView("home")} />}
-        {view === "admin" && isAdminAuthed && <AdminPanel onLogout={() => { setIsAdminAuthed(false); setView("home"); }} refreshData={refreshData} allAthletes={allAthletes} allRegistrations={allRegistrations} allResults={allResults} event={event} upiId={upiId} />}
+        {view === "admin" && isAdminAuthed && <AdminPanel onLogout={() => { setIsAdminAuthed(false); setView("home"); }} refreshData={refreshData} allAthletes={allAthletes} allRegistrations={allRegistrations} allResults={allResults} event={event} upiId={upiId} slotCounts={slotCounts} allWaitlist={allWaitlist} allBatches={allBatches} />}
       </div>
 
       <div style={{
