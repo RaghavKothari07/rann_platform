@@ -94,23 +94,84 @@ const calculatePoints = (results, tiers) => {
 // ============================================================
 // SHARED UI COMPONENTS
 // ============================================================
-const RannLogo = ({ size = "md", inverted = false }) => {
+
+// Crossed swords emblem - the warrior mark of Rann
+const SwordsEmblem = ({ size = 80, color = "#D4A017", strokeWidth = 1.5 }) => (
+  <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: "block" }}>
+    <defs>
+      <linearGradient id={`swordGrad${size}`} x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#F0C840" />
+        <stop offset="50%" stopColor={color} />
+        <stop offset="100%" stopColor="#8B6508" />
+      </linearGradient>
+    </defs>
+    {/* Sword 1 - top-left to bottom-right */}
+    <g transform="rotate(45 50 50)">
+      {/* Blade */}
+      <path d="M 50 8 L 53 15 L 53 60 L 50 65 L 47 60 L 47 15 Z" fill={`url(#swordGrad${size})`} stroke={color} strokeWidth={strokeWidth} />
+      {/* Crossguard */}
+      <rect x="38" y="63" width="24" height="4" fill={color} stroke="#6B4423" strokeWidth="0.5" />
+      {/* Handle */}
+      <rect x="48" y="67" width="4" height="14" fill="#6B4423" />
+      {/* Pommel */}
+      <circle cx="50" cy="84" r="3.5" fill={color} stroke="#6B4423" strokeWidth="0.5" />
+      {/* Tip detail */}
+      <path d="M 50 8 L 51 11 L 49 11 Z" fill="#FFFFFF" opacity="0.6" />
+    </g>
+    {/* Sword 2 - top-right to bottom-left */}
+    <g transform="rotate(-45 50 50)">
+      <path d="M 50 8 L 53 15 L 53 60 L 50 65 L 47 60 L 47 15 Z" fill={`url(#swordGrad${size})`} stroke={color} strokeWidth={strokeWidth} />
+      <rect x="38" y="63" width="24" height="4" fill={color} stroke="#6B4423" strokeWidth="0.5" />
+      <rect x="48" y="67" width="4" height="14" fill="#6B4423" />
+      <circle cx="50" cy="84" r="3.5" fill={color} stroke="#6B4423" strokeWidth="0.5" />
+      <path d="M 50 8 L 51 11 L 49 11 Z" fill="#FFFFFF" opacity="0.6" />
+    </g>
+    {/* Center medallion */}
+    <circle cx="50" cy="50" r="8" fill="#1A1A1A" stroke={color} strokeWidth="1.5" />
+    <circle cx="50" cy="50" r="3" fill={color} />
+  </svg>
+);
+
+// Ornamental divider for sections
+const OrnamentDivider = ({ color = "#D4A017", width = 200 }) => (
+  <svg width={width} height="20" viewBox="0 0 200 20" style={{ display: "block", margin: "0 auto" }}>
+    <line x1="0" y1="10" x2="80" y2="10" stroke={color} strokeWidth="1" />
+    <circle cx="90" cy="10" r="2" fill={color} />
+    <path d="M 95 10 L 100 5 L 105 10 L 100 15 Z" fill={color} />
+    <circle cx="110" cy="10" r="2" fill={color} />
+    <line x1="120" y1="10" x2="200" y2="10" stroke={color} strokeWidth="1" />
+  </svg>
+);
+
+const RannLogo = ({ size = "md", inverted = false, showEmblem = true }) => {
   const sizes = {
-    sm: { rann: 28, dev: 14, sub: 9 },
-    md: { rann: 44, dev: 20, sub: 11 },
-    lg: { rann: 72, dev: 32, sub: 14 },
-    xl: { rann: 110, dev: 48, sub: 18 },
+    sm: { rann: 28, dev: 14, sub: 9, emblem: 32 },
+    md: { rann: 48, dev: 22, sub: 11, emblem: 50 },
+    lg: { rann: 80, dev: 36, sub: 14, emblem: 80 },
+    xl: { rann: 130, dev: 56, sub: 18, emblem: 140 },
   };
   const s = sizes[size];
   const mainColor = inverted ? COLORS.cream : COLORS.charcoal;
   const accentColor = inverted ? COLORS.gold : COLORS.primary;
   return (
-    <div style={{ textAlign: "center", lineHeight: 1 }}>
-      <div style={{ fontSize: s.dev, color: accentColor, fontWeight: 700, fontFamily: "'Noto Serif Devanagari', serif", marginBottom: 2 }}>रण</div>
-      <div style={{ fontSize: s.rann, fontFamily: "'Cinzel', 'Times New Roman', serif", fontWeight: 600, letterSpacing: s.rann * 0.04, color: mainColor }}>RANN</div>
-      {size !== "sm" && (
-        <div style={{ fontSize: s.sub, color: accentColor, letterSpacing: 2, marginTop: 6, fontWeight: 500 }}>STEP INTO THE ARENA</div>
+    <div style={{ textAlign: "center", lineHeight: 1, position: "relative", display: "inline-block" }}>
+      {showEmblem && size !== "sm" && (
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -55%)", opacity: inverted ? 0.18 : 0.12, zIndex: 0, pointerEvents: "none" }}>
+          <SwordsEmblem size={s.emblem * 1.8} color={inverted ? COLORS.gold : COLORS.primary} />
+        </div>
       )}
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{ fontSize: s.dev, color: accentColor, fontWeight: 700, fontFamily: "'Noto Serif Devanagari', serif", marginBottom: 4, letterSpacing: 2 }}>रण</div>
+        <div style={{ fontSize: s.rann, fontFamily: "'Cinzel', 'Times New Roman', serif", fontWeight: 700, letterSpacing: s.rann * 0.06, color: mainColor, lineHeight: 1, textShadow: inverted ? `0 2px 8px rgba(0,0,0,0.3)` : "none" }}>RANN</div>
+        {size !== "sm" && (
+          <>
+            <div style={{ marginTop: 12, marginBottom: 8 }}>
+              <OrnamentDivider color={accentColor} width={size === "xl" ? 280 : size === "lg" ? 200 : 140} />
+            </div>
+            <div style={{ fontSize: s.sub, color: accentColor, letterSpacing: 4, fontWeight: 600 }}>STEP INTO THE ARENA</div>
+          </>
+        )}
+      </div>
     </div>
   );
 };
@@ -128,11 +189,25 @@ const Button = ({ children, onClick, variant = "primary", size = "md", style = {
   return <button type={type} onClick={onClick} disabled={disabled} style={{ ...base, ...sizes[size], ...variants[variant], ...style }}>{children}</button>;
 };
 
-const Card = ({ children, style = {} }) => (
-  <div style={{ background: "#FFFFFF", borderRadius: 10, border: `1px solid ${COLORS.borderLight}`, padding: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", ...style }}>
-    {children}
-  </div>
-);
+const Card = ({ children, style = {}, variant = "default" }) => {
+  const variants = {
+    default: { background: "#FFFFFF", border: `1px solid ${COLORS.borderLight}` },
+    parchment: { background: "linear-gradient(135deg, #FDF9EE 0%, #F5EDD8 100%)", border: `1px solid ${COLORS.gold}40` },
+    dark: { background: "linear-gradient(135deg, #1F1410 0%, #0E0805 100%)", border: `1px solid ${COLORS.gold}80`, color: COLORS.cream },
+    crimson: { background: "linear-gradient(135deg, #A00010 0%, #6B0000 100%)", border: `1px solid ${COLORS.gold}`, color: COLORS.cream },
+  };
+  return (
+    <div style={{
+      borderRadius: 12,
+      padding: 24,
+      boxShadow: "0 2px 12px rgba(20, 8, 5, 0.08), 0 1px 3px rgba(20, 8, 5, 0.04)",
+      ...variants[variant],
+      ...style,
+    }}>
+      {children}
+    </div>
+  );
+};
 
 const Input = ({ label, value, onChange, placeholder, type = "text", required = false, helpText = "" }) => (
   <div style={{ marginBottom: 16 }}>
@@ -157,10 +232,11 @@ const BeltBadge = ({ points, size = "md" }) => {
   );
 };
 
-const SectionHeader = ({ title, subtitle, inline = false }) => (
-  <div style={{ marginBottom: inline ? 0 : 16 }}>
-    <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 2, fontWeight: 700 }}>{subtitle?.toUpperCase()}</div>
-    <div style={{ fontSize: 22, fontFamily: "'Cinzel', serif", fontWeight: 600, color: COLORS.charcoal, marginTop: 2 }}>{title}</div>
+const SectionHeader = ({ title, subtitle, inline = false, centered = false }) => (
+  <div style={{ marginBottom: inline ? 0 : 20, textAlign: centered ? "center" : "left" }}>
+    <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 3, fontWeight: 700 }}>◆ {subtitle?.toUpperCase()} ◆</div>
+    <div style={{ fontSize: 26, fontFamily: "'Cinzel', serif", fontWeight: 600, color: COLORS.charcoal, marginTop: 6, letterSpacing: 0.5 }}>{title}</div>
+    {centered && <div style={{ marginTop: 10 }}><OrnamentDivider color={COLORS.gold} width={120} /></div>}
   </div>
 );
 
@@ -205,113 +281,209 @@ const SetupRequired = () => (
 // ============================================================
 const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
   <div>
-    <div style={{ background: `linear-gradient(180deg, ${COLORS.primaryLight} 0%, ${COLORS.primaryDark} 100%)`, padding: "60px 20px 50px", textAlign: "center", borderRadius: 12, marginBottom: 32 }}>
-      <RannLogo size="xl" inverted />
-      <div style={{ fontStyle: "italic", color: COLORS.cream, opacity: 0.9, marginTop: 16, fontSize: 14 }}>Where warriors are made</div>
+    {/* HERO — cinematic with crossed swords */}
+    <div style={{
+      position: "relative",
+      background: `radial-gradient(ellipse at center, ${COLORS.primaryLight} 0%, ${COLORS.primary} 40%, ${COLORS.primaryDark} 80%, #3A0000 100%)`,
+      padding: "70px 24px 80px",
+      textAlign: "center",
+      borderRadius: 16,
+      marginBottom: 40,
+      overflow: "hidden",
+      boxShadow: `0 8px 32px rgba(75, 0, 0, 0.35), inset 0 1px 0 ${COLORS.gold}40`,
+      border: `1px solid ${COLORS.gold}60`,
+    }}>
+      {/* Decorative corner ornaments */}
+      <div style={{ position: "absolute", top: 12, left: 12, width: 40, height: 40, borderTop: `2px solid ${COLORS.gold}`, borderLeft: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
+      <div style={{ position: "absolute", top: 12, right: 12, width: 40, height: 40, borderTop: `2px solid ${COLORS.gold}`, borderRight: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
+      <div style={{ position: "absolute", bottom: 12, left: 12, width: 40, height: 40, borderBottom: `2px solid ${COLORS.gold}`, borderLeft: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
+      <div style={{ position: "absolute", bottom: 12, right: 12, width: 40, height: 40, borderBottom: `2px solid ${COLORS.gold}`, borderRight: `2px solid ${COLORS.gold}`, opacity: 0.7 }} />
+
+      {/* Subtle dot pattern overlay */}
+      <div style={{
+        position: "absolute", inset: 0,
+        backgroundImage: `radial-gradient(circle, ${COLORS.gold}15 1px, transparent 1px)`,
+        backgroundSize: "20px 20px",
+        opacity: 0.5,
+        pointerEvents: "none",
+      }} />
+
+      {/* The big logo with swords */}
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <RannLogo size="xl" inverted />
+        <div style={{ fontStyle: "italic", color: COLORS.cream, opacity: 0.85, marginTop: 24, fontSize: 16, fontFamily: "Georgia, serif", letterSpacing: 1 }}>
+          ~ Where warriors are made ~
+        </div>
+      </div>
     </div>
 
+    {/* Welcome back / Login row */}
     {athlete ? (
-      <Card style={{ marginBottom: 24, background: COLORS.creamLight, borderColor: COLORS.gold }}>
+      <Card variant="parchment" style={{ marginBottom: 24, borderColor: COLORS.gold }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 12, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>WELCOME BACK</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.charcoal, marginTop: 2 }}>{athlete.name}</div>
-            <div style={{ marginTop: 8 }}><BeltBadge points={athlete.total_points || 0} /></div>
+            <div style={{ fontSize: 11, color: COLORS.earth, letterSpacing: 2, fontWeight: 700 }}>◆ WELCOME BACK ◆</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, marginTop: 4, fontFamily: "'Cinzel', serif" }}>{athlete.name}</div>
+            <div style={{ marginTop: 10 }}><BeltBadge points={athlete.total_points || 0} /></div>
           </div>
-          <Button onClick={() => onNav("dashboard")} variant="primary">My Dashboard →</Button>
+          <Button onClick={() => onNav("dashboard")} variant="primary">Enter Your Dashboard →</Button>
         </div>
       </Card>
     ) : (
-      <Card style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ fontSize: 14, color: COLORS.textGray }}>Already a warrior?</div>
+      <Card style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, background: `linear-gradient(90deg, #FFFFFF 0%, ${COLORS.creamLight} 100%)` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <SwordsEmblem size={32} color={COLORS.primary} />
+          <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 600 }}>Already a warrior?</div>
+        </div>
         <Button onClick={() => onNav("login")} variant="ghost" size="sm">Log in with phone →</Button>
       </Card>
     )}
 
-    <Card style={{ marginBottom: 32, padding: 32, background: COLORS.charcoal, color: COLORS.cream, borderColor: COLORS.gold }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
-        <div style={{ flex: "1 1 280px" }}>
-          <div style={{ color: COLORS.gold, fontSize: 12, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>NEXT EVENT · {event?.status?.toUpperCase() || "OPEN"}</div>
-          <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Cinzel', serif", letterSpacing: 0.5, marginBottom: 10 }}>{event?.event_date || "Date TBA"}</div>
-          <div style={{ fontSize: 14, marginBottom: 4, opacity: 0.9 }}>📍 {event?.venue || "TBA"}</div>
-          <div style={{ fontSize: 14, opacity: 0.9 }}>⏰ {event?.start_time || "6:30 AM"} · Registration closes {event?.registration_deadline || "—"}</div>
+    {/* Next event hero — dark dramatic */}
+    <Card variant="dark" style={{ marginBottom: 40, padding: 40, position: "relative", overflow: "hidden" }}>
+      {/* Background swords */}
+      <div style={{ position: "absolute", right: -30, top: -30, opacity: 0.08, pointerEvents: "none" }}>
+        <SwordsEmblem size={280} color={COLORS.gold} />
+      </div>
+      <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
+        <div style={{ flex: "1 1 300px" }}>
+          <div style={{ color: COLORS.gold, fontSize: 12, letterSpacing: 3, fontWeight: 700, marginBottom: 12 }}>
+            ◆ NEXT BATTLE · {event?.status?.toUpperCase() || "OPEN"} ◆
+          </div>
+          <div style={{ fontSize: 32, fontWeight: 700, fontFamily: "'Cinzel', serif", letterSpacing: 0.5, marginBottom: 14, lineHeight: 1.2 }}>
+            {event?.event_date || "Date TBA"}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 14, opacity: 0.9, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: COLORS.gold }}>◆</span> {event?.venue || "Venue TBA"}
+            </div>
+            <div style={{ fontSize: 14, opacity: 0.9, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: COLORS.gold }}>◆</span> {event?.start_time || "6:30 AM"}
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.7, fontStyle: "italic", marginTop: 4 }}>
+              Registration closes {event?.registration_deadline || "—"}
+            </div>
+          </div>
         </div>
         <div>
           {event?.status === "open" ? (
-            <Button onClick={() => onNav("register")} variant="gold" size="lg">Register Now →</Button>
+            <Button onClick={() => onNav("register")} variant="gold" size="lg" style={{ fontSize: 16, padding: "16px 36px" }}>
+              ⚔ ENTER THE ARENA →
+            </Button>
           ) : (
-            <div style={{ background: COLORS.primary, color: COLORS.cream, padding: "12px 22px", borderRadius: 6, fontWeight: 600, fontSize: 13 }}>
-              Registration {event?.status === "closed" ? "Closed" : "Coming Soon"}
+            <div style={{ background: COLORS.primary, color: COLORS.cream, padding: "14px 24px", borderRadius: 6, fontWeight: 600, fontSize: 13 }}>
+              {event?.status === "closed" ? "Gates Closed" : "Coming Soon"}
             </div>
           )}
         </div>
       </div>
     </Card>
 
-    <div style={{ marginBottom: 32 }}>
-      <SectionHeader title="The Four Events" subtitle="Each Sunday morning · 5-person batches" />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+    {/* The four events — themed cards */}
+    <div style={{ marginBottom: 40 }}>
+      <SectionHeader title="The Four Trials" subtitle="Sunday morning · 5-warrior heats" centered />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginTop: 24 }}>
         {[
-          { name: "Push-ups", spec: "60 sec · max reps" },
-          { name: "Squats", spec: "90 sec · max reps" },
-          { name: "Plank", spec: "Max hold time" },
-          { name: "100m Sprint", spec: "Fastest wins" },
-        ].map((e) => (
-          <Card key={e.name} style={{ textAlign: "center", padding: 18, borderLeft: `3px solid ${COLORS.primary}` }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", letterSpacing: 1, marginBottom: 4 }}>{e.name.toUpperCase()}</div>
-            <div style={{ fontSize: 12, color: COLORS.textGray, fontStyle: "italic" }}>{e.spec}</div>
+          { name: "Push-ups", spec: "60 sec · max reps", icon: "💪", desc: "Chest to block" },
+          { name: "Squats", spec: "90 sec · max reps", icon: "🏋", desc: "Hip below knee" },
+          { name: "Plank", spec: "Max hold time", icon: "⏱", desc: "Forearm · straight" },
+          { name: "100m Sprint", spec: "Fastest wins", icon: "⚡", desc: "Standing start" },
+        ].map((e, i) => (
+          <Card key={e.name} variant="parchment" style={{ textAlign: "center", padding: 24, position: "relative", overflow: "hidden", transition: "transform 0.2s" }}>
+            <div style={{ position: "absolute", top: -10, right: -10, width: 60, height: 60, borderRadius: "50%", background: `${COLORS.primary}10`, pointerEvents: "none" }} />
+            <div style={{ fontSize: 32, marginBottom: 8, position: "relative", zIndex: 1 }}>{e.icon}</div>
+            <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>EVENT {i + 1}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", letterSpacing: 1, marginBottom: 8 }}>
+              {e.name.toUpperCase()}
+            </div>
+            <div style={{ fontSize: 12, color: COLORS.earth, fontStyle: "italic", marginBottom: 4 }}>{e.spec}</div>
+            <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 0.5 }}>{e.desc}</div>
           </Card>
         ))}
       </div>
     </div>
 
-    <div style={{ marginBottom: 32 }}>
-      <SectionHeader title="Choose Your Tier" subtitle="5 compete. Everyone wins something." />
-      <Card style={{ padding: 0, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: COLORS.charcoal, color: COLORS.cream }}>
-              <th style={{ padding: 12, textAlign: "left", fontWeight: 600, letterSpacing: 1 }}>TIER</th>
-              <th style={{ padding: 12, textAlign: "center", fontWeight: 600, letterSpacing: 1 }}>ENTRY</th>
-              <th style={{ padding: 12, textAlign: "center", fontWeight: 600, letterSpacing: 1 }}>1ST PRIZE</th>
-              <th style={{ padding: 12, textAlign: "center", fontWeight: 600, letterSpacing: 1 }}>2ND</th>
-              <th style={{ padding: 12, textAlign: "center", fontWeight: 600, letterSpacing: 1 }}>3-5 EACH</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(TIERS).map(([name, t], i) => (
-              <tr key={name} style={{ background: i % 2 === 0 ? COLORS.creamLight : "#FFFFFF" }}>
-                <td style={{ padding: 12, fontWeight: 700, color: t.color }}>{name}</td>
-                <td style={{ padding: 12, textAlign: "center" }}>₹{t.entry}</td>
-                <td style={{ padding: 12, textAlign: "center", fontWeight: 700, color: COLORS.primary }}>₹{t.entry * 2}</td>
-                <td style={{ padding: 12, textAlign: "center" }}>₹{t.entry}</td>
-                <td style={{ padding: 12, textAlign: "center" }}>₹{Math.round(t.entry * 0.3)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+    {/* Tier cards — dramatic, each tier its own card not a flat table */}
+    <div style={{ marginBottom: 40 }}>
+      <SectionHeader title="Choose Your Tier" subtitle="5 compete · Everyone wins" centered />
+      <div style={{ fontSize: 13, color: COLORS.textGray, fontStyle: "italic", textAlign: "center", marginTop: -8, marginBottom: 24 }}>
+        Pay your entry · Win double · Even 5th place keeps 30%
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+        {Object.entries(TIERS).map(([name, t], i) => (
+          <Card key={name} style={{
+            padding: 0,
+            overflow: "hidden",
+            border: `2px solid ${t.color}`,
+            transform: name === "Gold" ? "scale(1.02)" : "scale(1)",
+            position: "relative",
+          }}>
+            {name === "Gold" && (
+              <div style={{ position: "absolute", top: 8, right: 8, background: COLORS.gold, color: COLORS.charcoal, fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: "2px 8px", borderRadius: 3 }}>POPULAR</div>
+            )}
+            <div style={{ background: t.color, color: name === "Silver" ? "#FFFFFF" : (name === "Gold" ? COLORS.charcoal : "#FFFFFF"), padding: "14px 16px", textAlign: "center", fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>
+              {name.toUpperCase()}
+            </div>
+            <div style={{ padding: 18, textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>ENTRY</div>
+              <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginTop: 2, marginBottom: 12 }}>₹{t.entry}</div>
+              <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 12, fontSize: 13, lineHeight: 1.8, color: COLORS.charcoal }}>
+                <div><span style={{ color: COLORS.gold, fontWeight: 700 }}>1st</span> · <strong>₹{t.entry * 2}</strong></div>
+                <div><span style={{ color: COLORS.textGray, fontWeight: 700 }}>2nd</span> · ₹{t.entry}</div>
+                <div><span style={{ color: COLORS.textGray, fontWeight: 700 }}>3-5</span> · ₹{Math.round(t.entry * 0.3)} ea</div>
+              </div>
+              <div style={{ marginTop: 12, padding: "6px 10px", background: `${t.color}15`, borderRadius: 4, fontSize: 11, color: t.color, fontWeight: 700, letterSpacing: 1 }}>
+                {t.multiplier}× POINTS
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
     </div>
 
-    <div style={{ marginBottom: 32 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+    {/* Leaderboard preview — themed */}
+    <div style={{ marginBottom: 40 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <SectionHeader title="Top Warriors" subtitle="Live leaderboard" inline />
         <Button onClick={() => onNav("leaderboard")} variant="ghost" size="sm">View Full →</Button>
       </div>
       {leaderboardPreview && leaderboardPreview.length > 0 ? (
         <Card style={{ padding: 0, overflow: "hidden" }}>
           {leaderboardPreview.slice(0, 5).map((a, i) => (
-            <div key={a.phone} style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 14, borderBottom: i < 4 ? `1px solid ${COLORS.borderLight}` : "none" }}>
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: i < 3 ? COLORS.gold : COLORS.creamLight, color: COLORS.charcoal, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13 }}>{i + 1}</div>
-              <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 14 }}>{a.name}</div></div>
+            <div key={a.phone} style={{
+              padding: "16px 22px",
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              borderBottom: i < 4 ? `1px solid ${COLORS.borderLight}` : "none",
+              background: i < 3 ? `linear-gradient(90deg, ${COLORS.gold}10 0%, transparent 50%)` : "transparent",
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%",
+                background: i === 0 ? COLORS.gold : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : COLORS.creamLight,
+                color: COLORS.charcoal,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, fontSize: 14,
+                border: i < 3 ? `2px solid ${COLORS.charcoal}` : `1px solid ${COLORS.borderLight}`,
+                fontFamily: "'Cinzel', serif",
+              }}>{i + 1}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, fontFamily: "'Cinzel', serif" }}>{a.name}</div>
+              </div>
               <BeltBadge points={a.total_points || 0} size="sm" />
-              <div style={{ fontWeight: 700, color: COLORS.primary, fontSize: 14, minWidth: 60, textAlign: "right" }}>{a.total_points || 0} pts</div>
+              <div style={{ fontWeight: 700, color: COLORS.primary, fontSize: 16, minWidth: 70, textAlign: "right", fontFamily: "'Cinzel', serif" }}>{a.total_points || 0}</div>
             </div>
           ))}
         </Card>
       ) : (
-        <Card style={{ textAlign: "center", padding: 32, color: COLORS.textGray, fontStyle: "italic" }}>
-          The leaderboard begins after Event #1. Be the first warrior on the wall.
+        <Card variant="parchment" style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ marginBottom: 16 }}><SwordsEmblem size={60} color={COLORS.gold} /></div>
+          <div style={{ fontSize: 16, color: COLORS.charcoal, fontStyle: "italic", fontFamily: "Georgia, serif", marginBottom: 6 }}>
+            The leaderboard awaits its first warriors.
+          </div>
+          <div style={{ fontSize: 13, color: COLORS.textGray }}>
+            Be the first to step into the Rann.
+          </div>
         </Card>
       )}
     </div>
@@ -1260,19 +1432,43 @@ export default function App() {
   if (!loaded) return <div style={{ textAlign: "center", padding: 80, color: COLORS.textGray }}>Loading the arena...</div>;
 
   return (
-    <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", background: COLORS.creamLight, minHeight: "100vh", color: COLORS.charcoal }}>
+    <div style={{
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      background: `${COLORS.creamLight}`,
+      backgroundImage: `radial-gradient(circle, ${COLORS.gold}08 1px, transparent 1px), radial-gradient(circle, ${COLORS.primary}05 1px, transparent 1px)`,
+      backgroundSize: "30px 30px, 60px 60px",
+      backgroundPosition: "0 0, 15px 15px",
+      minHeight: "100vh",
+      color: COLORS.charcoal,
+    }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Noto+Serif+Devanagari:wght@600;700&display=swap');
         * { box-sizing: border-box; }
-        button:hover:not(:disabled) { filter: brightness(1.1); }
-        button:active:not(:disabled) { transform: scale(0.98); }
+        button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        button:active:not(:disabled) { transform: scale(0.98) translateY(0); }
+        button { transition: all 0.18s ease; }
         input:focus, select:focus, textarea:focus { outline: 2px solid ${COLORS.gold}; outline-offset: 1px; border-color: ${COLORS.gold}; }
       `}</style>
 
-      <div style={{ background: "#FFFFFF", borderBottom: `1px solid ${COLORS.borderLight}`, padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <div onClick={() => setView("home")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ fontSize: 12, color: COLORS.primary, fontFamily: "'Noto Serif Devanagari', serif", fontWeight: 700 }}>रण</div>
-          <div style={{ fontSize: 18, fontFamily: "'Cinzel', serif", fontWeight: 700, letterSpacing: 2, color: COLORS.charcoal }}>RANN</div>
+      {/* Top nav - dramatic brand bar */}
+      <div style={{
+        background: `linear-gradient(180deg, #FFFFFF 0%, ${COLORS.creamLight} 100%)`,
+        borderBottom: `2px solid ${COLORS.gold}`,
+        padding: "14px 20px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 8,
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
+        position: "relative",
+      }}>
+        <div onClick={() => setView("home")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+          <SwordsEmblem size={32} color={COLORS.primary} />
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <div style={{ fontSize: 14, color: COLORS.primary, fontFamily: "'Noto Serif Devanagari', serif", fontWeight: 700 }}>रण</div>
+            <div style={{ fontSize: 22, fontFamily: "'Cinzel', serif", fontWeight: 700, letterSpacing: 4, color: COLORS.charcoal }}>RANN</div>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <Button onClick={() => setView("home")} variant={view === "home" ? "primary" : "light"} size="sm">Home</Button>
@@ -1300,9 +1496,22 @@ export default function App() {
         {view === "admin" && isAdminAuthed && <AdminPanel onLogout={() => { setIsAdminAuthed(false); setView("home"); }} refreshData={refreshData} allAthletes={allAthletes} allRegistrations={allRegistrations} allResults={allResults} event={event} upiId={upiId} />}
       </div>
 
-      <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, padding: "20px", textAlign: "center", fontSize: 12, color: COLORS.textGray }}>
-        <div style={{ fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: 2, fontSize: 14, color: COLORS.charcoal, marginBottom: 4 }}>RANN</div>
-        <div style={{ fontStyle: "italic" }}>Step into the Arena · Jaipur · @rann.league</div>
+      <div style={{
+        borderTop: `2px solid ${COLORS.gold}`,
+        background: COLORS.charcoal,
+        color: COLORS.cream,
+        padding: "32px 20px",
+        textAlign: "center",
+      }}>
+        <div style={{ marginBottom: 12 }}>
+          <SwordsEmblem size={36} color={COLORS.gold} />
+        </div>
+        <div style={{ fontFamily: "'Cinzel', serif", fontWeight: 700, letterSpacing: 4, fontSize: 18, color: COLORS.cream, marginBottom: 6 }}>RANN</div>
+        <div style={{ marginBottom: 8 }}>
+          <OrnamentDivider color={COLORS.gold} width={120} />
+        </div>
+        <div style={{ fontStyle: "italic", fontSize: 13, opacity: 0.85 }}>Step into the Arena · Jaipur · @rann.league</div>
+        <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8 }}>रण में उतरो।</div>
       </div>
     </div>
   );
