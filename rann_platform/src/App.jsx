@@ -557,36 +557,97 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
         </div>
       </Card>
 
-      {/* The belt journey */}
+      {/* The belt journey — vertical ladder with full perks */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 13, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 12, textAlign: "center" }}>◆ THE BELT JOURNEY ◆</div>
-        <Card style={{ padding: 20 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(95px, 1fr))", gap: 10 }}>
-            {[
-              { name: "White", min: 0, perk: "Welcome", color: "#FFFFFF", textColor: COLORS.charcoal, border: "#999" },
-              { name: "Blue", min: 250, perk: "Wristband + badge", color: "#1F4E79", textColor: "#FFFFFF", border: "#1F4E79" },
-              { name: "Purple", min: 750, perk: "Free Bronze entry/month", color: "#6B2D8F", textColor: "#FFFFFF", border: "#6B2D8F" },
-              { name: "Brown", min: 2000, perk: "Free Silver entry/month", color: "#6B4423", textColor: "#FFFFFF", border: "#6B4423" },
-              { name: "Black", min: 5000, perk: "Wall of Honor", color: "#1A1A1A", textColor: "#FFFFFF", border: "#1A1A1A" },
-              { name: "Champion", min: "Top 1/yr", perk: "₹50,000 + lifetime entry", color: COLORS.gold, textColor: COLORS.charcoal, border: COLORS.goldDark },
-            ].map((b, i) => (
-              <div key={b.name} style={{ textAlign: "center", padding: 8 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: "50%",
-                  background: b.color, border: `2px solid ${b.border}`,
-                  margin: "0 auto 8px",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: b.textColor, fontSize: 11, fontWeight: 700,
-                  fontFamily: "'Cinzel', serif",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-                }}>{i + 1}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.charcoal, marginBottom: 2, fontFamily: "'Cinzel', serif" }}>{b.name}</div>
-                <div style={{ fontSize: 10, color: COLORS.gold, fontWeight: 600, marginBottom: 4 }}>{typeof b.min === "number" ? `${b.min}+ pts` : b.min}</div>
-                <div style={{ fontSize: 10, color: COLORS.textGray, lineHeight: 1.4 }}>{b.perk}</div>
+        <div style={{ fontSize: 12, color: COLORS.textGray, fontStyle: "italic", textAlign: "center", marginBottom: 16 }}>
+          Every belt unlocks real rewards · Physical · Social · Financial · Competitive
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[
+            {
+              name: "White Belt", min: "0+ pts", num: 1,
+              tagline: "Welcome to the Arena",
+              color: "#FFFFFF", textColor: COLORS.charcoal, border: "#999",
+              perks: ["Warrior ID + roster entry", "Full access to all events", "Discord/WhatsApp community"],
+            },
+            {
+              name: "Blue Belt", min: "250+ pts", num: 2,
+              tagline: "Earned your stripes",
+              color: "#1F4E79", textColor: "#FFFFFF", border: "#1F4E79",
+              perks: ["Branded Rann wristband", "Name on the Wall of Warriors", "Story shoutout on @rann.league"],
+            },
+            {
+              name: "Purple Belt", min: "750+ pts", num: 3,
+              tagline: "Now they know your name",
+              color: "#6B2D8F", textColor: "#FFFFFF", border: "#6B2D8F",
+              perks: ["Official Rann T-shirt", "1 free Bronze entry per month", "Reserved batch slot (skip queue)"],
+            },
+            {
+              name: "Brown Belt", min: "2000+ pts", num: 4,
+              tagline: "A veteran of the Rann",
+              color: "#6B4423", textColor: "#FFFFFF", border: "#6B4423",
+              perks: ["Premium Rann hoodie", "1 free Silver entry per month", "\"Veteran\" tag on profile", "Priority registration (24h early access)"],
+            },
+            {
+              name: "Black Belt", min: "5000+ pts", num: 5,
+              tagline: "Legend status",
+              color: "#1A1A1A", textColor: "#FFFFFF", border: "#1A1A1A",
+              perks: ["Custom warrior medal", "1 free Gold entry per month", "Free coaching session quarterly", "Featured reel on Rann's socials"],
+            },
+            {
+              name: "Pink City Champion", min: "Top 1 / year", num: 6,
+              tagline: "The crown of the Rann",
+              color: COLORS.gold, textColor: COLORS.charcoal, border: COLORS.goldDark,
+              perks: ["₹50,000 cash prize", "Champion's belt (custom)", "Lifetime free entry to all events", "Direct intro to Rann's sponsors"],
+              isChampion: true,
+            },
+          ].map((b) => (
+            <Card key={b.name} variant={b.isChampion ? "parchment" : "default"} style={{
+              padding: 16,
+              borderLeft: `4px solid ${b.color === "#FFFFFF" ? "#999" : b.color}`,
+              position: "relative",
+              ...(b.isChampion ? { background: `linear-gradient(135deg, #FFF8E0 0%, #FAEBC4 100%)`, border: `2px solid ${COLORS.gold}` } : {}),
+            }}>
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                {/* Belt badge */}
+                <div style={{ flexShrink: 0 }}>
+                  <div style={{
+                    width: 56, height: 56, borderRadius: "50%",
+                    background: b.color, border: `2.5px solid ${b.border}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: b.textColor,
+                    fontFamily: "'Cinzel', serif",
+                    fontSize: 18, fontWeight: 700,
+                    boxShadow: "0 3px 8px rgba(0,0,0,0.12)",
+                  }}>{b.num}</div>
+                  <div style={{ textAlign: "center", marginTop: 6, fontSize: 10, color: COLORS.gold, fontWeight: 700, letterSpacing: 0.5 }}>{b.min}</div>
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", letterSpacing: 0.5 }}>
+                      {b.name}
+                    </div>
+                    {b.isChampion && (
+                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: "2px 8px", background: COLORS.primary, color: COLORS.cream, borderRadius: 3 }}>ELITE</div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: COLORS.primary, fontStyle: "italic", marginBottom: 10 }}>{b.tagline}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {b.perks.map((p, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: COLORS.charcoal, lineHeight: 1.5 }}>
+                        <span style={{ color: COLORS.gold, fontWeight: 700, marginTop: 1 }}>◆</span>
+                        <span>{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-        </Card>
+            </Card>
+          ))}
+        </div>
       </div>
 
       {/* Example calc */}
