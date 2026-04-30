@@ -76,6 +76,44 @@ const formatPhone = (p) => {
 
 const validatePhone = (p) => /^\d{10}$/.test((p || "").replace(/\D/g, ""));
 
+// Registration deadline helpers
+const isRegistrationOpen = (event) => {
+  if (!event) return false;
+  if (event.status !== "open") return false;
+  if (event.registration_deadline_at) {
+    const deadline = new Date(event.registration_deadline_at);
+    if (isNaN(deadline.getTime())) return true; // invalid date, allow
+    if (deadline.getTime() <= Date.now()) return false; // past deadline
+  }
+  return true;
+};
+
+const getDeadlineInfo = (event) => {
+  if (!event?.registration_deadline_at) return null;
+  const deadline = new Date(event.registration_deadline_at);
+  if (isNaN(deadline.getTime())) return null;
+  const now = Date.now();
+  const ms = deadline.getTime() - now;
+  const past = ms <= 0;
+  const totalMinutes = Math.abs(Math.floor(ms / 60000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes - days * 24 * 60) / 60);
+  const minutes = totalMinutes % 60;
+  let label;
+  if (past) label = "closed";
+  else if (days > 0) label = `${days}d ${hours}h left`;
+  else if (hours > 0) label = `${hours}h ${minutes}m left`;
+  else label = `${minutes}m left`;
+  return { deadline, past, ms, days, hours, minutes, label, urgent: !past && ms < 24 * 60 * 60 * 1000 };
+};
+
+const formatDeadlineDisplay = (event) => {
+  if (!event?.registration_deadline_at) return event?.registration_deadline || "—";
+  const d = new Date(event.registration_deadline_at);
+  if (isNaN(d.getTime())) return event.registration_deadline || "—";
+  return d.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+};
+
 const calculatePoints = (results, tiers) => {
   if (!results || results.length === 0) return 0;
   let dayTotal = 0;
@@ -409,7 +447,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
         <div style={{ flex: "1 1 300px" }}>
           <div style={{ color: COLORS.gold, fontSize: 12, letterSpacing: 3, fontWeight: 700, marginBottom: 12 }}>
-            ◆ NEXT BATTLE · {event?.status?.toUpperCase() || "OPEN"} ◆
+            ◆ NEXT BATTLE · {isRegistrationOpen(event) ? "OPEN" : (event?.status === "results" ? "RESULTS LIVE" : "CLOSED")} ◆
           </div>
           <div style={{ fontSize: 32, fontWeight: 700, fontFamily: "'Cinzel', serif", letterSpacing: 0.5, marginBottom: 14, lineHeight: 1.2 }}>
             {event?.event_date || "Date TBA"}
@@ -422,18 +460,28 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
               <span style={{ color: COLORS.gold }}>◆</span> {event?.start_time || "6:30 AM"}
             </div>
             <div style={{ fontSize: 13, opacity: 0.7, fontStyle: "italic", marginTop: 4 }}>
-              Registration closes {event?.registration_deadline || "—"}
+              Registration closes {formatDeadlineDisplay(event)}
             </div>
+            {(() => {
+              const info = getDeadlineInfo(event);
+              if (!info || info.past) return null;
+              if (!info.urgent) return null;
+              return (
+                <div style={{ marginTop: 8, padding: "6px 12px", background: COLORS.gold, color: COLORS.charcoal, borderRadius: 4, fontSize: 12, fontWeight: 700, letterSpacing: 1, display: "inline-block", alignSelf: "flex-start" }}>
+                  ⏰ {info.label}
+                </div>
+              );
+            })()}
           </div>
         </div>
         <div>
-          {event?.status === "open" ? (
+          {isRegistrationOpen(event) ? (
             <Button onClick={() => onNav("register")} variant="gold" size="lg" style={{ fontSize: 16, padding: "16px 36px" }}>
               ⚔ ENTER THE ARENA →
             </Button>
           ) : (
-            <div style={{ background: COLORS.primary, color: COLORS.cream, padding: "14px 24px", borderRadius: 6, fontWeight: 600, fontSize: 13 }}>
-              {event?.status === "closed" ? "Gates Closed" : "Coming Soon"}
+            <div style={{ background: COLORS.primary, color: COLORS.cream, padding: "14px 24px", borderRadius: 6, fontWeight: 600, fontSize: 13, textAlign: "center" }}>
+              {event?.status === "results" ? "View Results" : (event?.status === "closed" || (getDeadlineInfo(event)?.past)) ? "Gates Closed" : "Coming Soon"}
             </div>
           )}
         </div>
@@ -883,6 +931,11 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
     }
     if (!waiverAccepted || !medicalOk) { setError("You must accept the waiver and medical declaration"); return; }
     if (confirmedEvents.length === 0 && waitlistEvents.length === 0) { setError("No events selected"); return; }
+    // Defense in depth: refuse if registration deadline has passed
+    if (!isRegistrationOpen(event)) {
+      setError("Registration just closed. Sorry — you missed the deadline by a hair.");
+      return;
+    }
 
     setLoading(true); setError("");
     const cleanPhone = phone.replace(/\D/g, "");
@@ -1530,8 +1583,25 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
   const [eventDate, setEventDate] = useState(event?.event_date || "");
   const [eventVenue, setEventVenue] = useState(event?.venue || "");
   const [eventStatus, setEventStatus] = useState(event?.status || "open");
+  // Convert ISO timestamp from DB to "YYYY-MM-DDTHH:mm" for datetime-local input (in user's local TZ)
+  const isoToLocalInput = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [eventDeadlineLocal, setEventDeadlineLocal] = useState(isoToLocalInput(event?.registration_deadline_at));
   const [newUpi, setNewUpi] = useState(upiId);
   const [exporting, setExporting] = useState(false);
+
+  // Re-sync state when event prop changes (e.g., after a save+refresh)
+  useEffect(() => {
+    setEventDate(event?.event_date || "");
+    setEventVenue(event?.venue || "");
+    setEventStatus(event?.status || "open");
+    setEventDeadlineLocal(isoToLocalInput(event?.registration_deadline_at));
+  }, [event?.id, event?.event_date, event?.venue, event?.status, event?.registration_deadline_at]);
 
   const verifyPayment = async (eventId, phone) => {
     await supabase.from("registrations").update({ payment_status: "verified", verified_at: new Date().toISOString() }).eq("event_id", eventId).eq("phone", phone);
@@ -1676,7 +1746,17 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
   };
 
   const saveEventConfig = async () => {
-    await supabase.from("events").update({ event_date: eventDate, venue: eventVenue, status: eventStatus }).eq("id", event.id);
+    // Convert local datetime input to ISO. Empty string = clear deadline (= no auto-close).
+    let deadlineIso = null;
+    if (eventDeadlineLocal && eventDeadlineLocal.trim()) {
+      const d = new Date(eventDeadlineLocal);
+      if (!isNaN(d.getTime())) deadlineIso = d.toISOString();
+    }
+    const { error } = await supabase.from("events").update({
+      event_date: eventDate, venue: eventVenue, status: eventStatus,
+      registration_deadline_at: deadlineIso,
+    }).eq("id", event.id);
+    if (error) { alert("Save failed: " + error.message); return; }
     await supabase.from("config").upsert({ key: "upi_id", value: newUpi });
     refreshData();
     alert("Saved");
@@ -2111,8 +2191,40 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       {tab === "event" && (
         <Card>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Current Event Configuration</div>
-          <Input label="Event Date" value={eventDate} onChange={setEventDate} placeholder="e.g., Sunday, May 18, 2026" />
+          <Input label="Event Date (display text)" value={eventDate} onChange={setEventDate} placeholder="e.g., Sunday, May 18, 2026" helpText="What athletes see on homepage. Free text — write it however you want it to appear." />
           <Input label="Venue" value={eventVenue} onChange={setEventVenue} placeholder="e.g., Central Park, Jaipur" />
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+              Registration Deadline <span style={{ color: COLORS.primary }}>*</span>
+            </label>
+            <input type="datetime-local" value={eventDeadlineLocal} onChange={(e) => setEventDeadlineLocal(e.target.value)}
+              style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box", fontFamily: "inherit" }} />
+            <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 6, lineHeight: 1.5 }}>
+              Platform will auto-refuse registrations after this exact moment. Leave empty if you want no auto-close (manual only).
+            </div>
+            {(() => {
+              if (!eventDeadlineLocal) return null;
+              const d = new Date(eventDeadlineLocal);
+              if (isNaN(d.getTime())) return null;
+              const previewEvent = { ...event, registration_deadline_at: d.toISOString(), status: eventStatus };
+              const info = getDeadlineInfo(previewEvent);
+              if (!info) return null;
+              const stillOpen = isRegistrationOpen(previewEvent);
+              return (
+                <div style={{ marginTop: 10, padding: "10px 12px", background: info.past ? "#FDE8E8" : (info.urgent ? "#FFF4D4" : COLORS.creamLight), borderRadius: 6, fontSize: 12, color: COLORS.charcoal, lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>
+                    {info.past ? "⛔ Already passed" : stillOpen ? "✓ Will auto-close in:" : "⛔ Status is not 'open' — registration is closed regardless"}
+                  </div>
+                  {!info.past && <div style={{ fontFamily: "monospace", color: info.urgent ? "#7B5500" : COLORS.charcoal }}>{info.label}</div>}
+                  <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 4 }}>
+                    Closes: {d.toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Status</label>
             <select value={eventStatus} onChange={(e) => setEventStatus(e.target.value)} style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box", fontFamily: "inherit" }}>
@@ -2120,7 +2232,11 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
               <option value="closed">Closed (registrations locked)</option>
               <option value="results">Results published</option>
             </select>
+            <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 6, lineHeight: 1.5 }}>
+              Manual override. If status is "open" AND deadline is in the future → registration is open. Either condition failing closes registration.
+            </div>
           </div>
+
           <Input label="UPI ID" value={newUpi} onChange={setNewUpi} placeholder="e.g., rann.league@upi" />
           <Button onClick={saveEventConfig} variant="primary">Save</Button>
         </Card>
