@@ -13,7 +13,7 @@ import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 const SUPABASE_URL = "https://bfmlwpwtmjbesjjmvpoq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmbWx3cHd0bWpiZXNqam12cG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NjI4NzUsImV4cCI6MjA5MzEzODg3NX0.h-8Lvl1vYiPyLatAEnjSq5edwGT9fUrZ26tbWsdw5Rk";
 
-const supabaseEnabled = SUPABASE_URL !== "https://bfmlwpwtmjbesjjmvpoq.supabase.co" && SUPABASE_ANON_KEY !== "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmbWx3cHd0bWpiZXNqam12cG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NjI4NzUsImV4cCI6MjA5MzEzODg3NX0.h-8Lvl1vYiPyLatAEnjSq5edwGT9fUrZ26tbWsdw5Rk";
+const supabaseEnabled = SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY_HERE";
 const supabase = supabaseEnabled ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 // ============================================================
@@ -462,6 +462,7 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
   };
 
   const submit = async () => {
+    if (!paymentNote.trim()) { setError("Payment reference is required. Please pay first, then enter the UTR/transaction ID from your UPI app."); return; }
     if (!waiverAccepted || !medicalOk) { setError("You must accept the waiver and medical declaration"); return; }
     setLoading(true); setError("");
     const cleanPhone = phone.replace(/\D/g, "");
@@ -600,7 +601,7 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete }) => {
               </div>
             </div>
 
-            <Input label="Payment reference / UPI transaction ID" value={paymentNote} onChange={setPaymentNote} placeholder="Last 6 digits of UTR or transaction ID" helpText="Helps us match your payment. Optional but recommended." />
+            <Input label="Payment reference / UPI transaction ID" value={paymentNote} onChange={setPaymentNote} placeholder="Last 6 digits of UTR or transaction ID" required helpText="Required. After paying, find this in your UPI app's transaction history." />
 
             <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 16, marginTop: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, letterSpacing: 0.5 }}>DECLARATIONS</div>
@@ -1246,7 +1247,7 @@ export default function App() {
 
   const handleLogin = (a) => { setAthlete(a); setView("dashboard"); refreshData(); };
   const handleLogout = () => { localStorage.removeItem("rann_session_phone"); setAthlete(null); setEventResults([]); setView("home"); };
-  const handleRegistrationComplete = (a, reg) => { setAthlete(a); setLastRegistration(reg); setView("success"); refreshData(); };
+  const handleRegistrationComplete = (a, reg) => { setAthlete(a); setLastRegistration(reg); setView("success"); setTimeout(() => refreshData(), 100); };
 
   const myCurrentRegistration = useMemo(() => {
     if (!athlete || !event) return null;
