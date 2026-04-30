@@ -76,6 +76,38 @@ const formatPhone = (p) => {
 
 const validatePhone = (p) => /^\d{10}$/.test((p || "").replace(/\D/g, ""));
 
+// ============================================================
+// PIN HASHING — PBKDF2-SHA256 via Web Crypto API
+// Stored: pin_salt (hex) and pin_hash (hex). 100k iterations.
+// ============================================================
+const _toHex = (buf) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+const _fromHex = (hex) => {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return bytes;
+};
+const generateSalt = () => {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return _toHex(arr);
+};
+const hashPin = async (pin, saltHex) => {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(pin), { name: "PBKDF2" }, false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: _fromHex(saltHex), iterations: 100000, hash: "SHA-256" },
+    keyMaterial, 256
+  );
+  return _toHex(bits);
+};
+const verifyPin = async (pin, saltHex, expectedHashHex) => {
+  if (!saltHex || !expectedHashHex) return false;
+  const computed = await hashPin(pin, saltHex);
+  return computed === expectedHashHex;
+};
+const validatePin = (pin) => /^\d{4}$/.test(pin || "");
+
+
 // Registration deadline helpers
 const isRegistrationOpen = (event) => {
   if (!event) return false;
@@ -770,91 +802,132 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
 );
 
 // ============================================================
-// LOGIN — phone OTP via Supabase
+// LOGIN — Phone + 4-digit PIN
 // ============================================================
 const LoginPage = ({ onLogin, onNav }) => {
+  // step 1 = phone, step 2 = enter PIN, step 3 = first-time PIN setup
   const [step, setStep] = useState(1);
   const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
+  const [pin, setPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [foundAthlete, setFoundAthlete] = useState(null);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const sendOtp = async () => {
+  const lookupPhone = async () => {
     if (!validatePhone(phone)) { setError("Please enter a valid 10-digit phone number"); return; }
     setLoading(true); setError(""); setInfo("");
     const cleanPhone = phone.replace(/\D/g, "");
     try {
-      const { data: athlete, error: athleteError } = await supabase
-        .from("athletes")
-        .select("*")
-        .eq("phone", cleanPhone)
-        .single();
-
-      if (athleteError || !athlete) {
+      const { data: athlete, error: aErr } = await supabase
+        .from("athletes").select("*").eq("phone", cleanPhone).single();
+      if (aErr || !athlete) {
         setError("No warrior found with this number. Register first to step into the Rann.");
         setLoading(false);
         return;
       }
-
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        phone: `+91${cleanPhone}`,
-      });
-
-      if (otpError) {
-        if (otpError.message?.toLowerCase().includes("provider") || otpError.message?.toLowerCase().includes("not enabled")) {
-          localStorage.setItem("rann_session_phone", cleanPhone);
-          onLogin(athlete);
-        } else {
-          setError(otpError.message);
-        }
-        setLoading(false);
-        return;
+      setFoundAthlete(athlete);
+      // Existing athlete with no PIN yet → first-time setup
+      if (!athlete.pin_hash) {
+        setStep(3);
+        setInfo("First time logging in? Set a 4-digit PIN to secure your account.");
+      } else {
+        setStep(2);
       }
-      setInfo("OTP sent. Check your messages.");
-      setStep(2);
     } catch (e) {
       setError("Something went wrong. Try again.");
     }
     setLoading(false);
   };
 
-  const verifyOtp = async () => {
-    if (!otp || otp.length < 4) { setError("Enter the OTP you received"); return; }
+  const verifyAndLogin = async () => {
+    if (!validatePin(pin)) { setError("PIN must be exactly 4 digits"); return; }
     setLoading(true); setError("");
-    const cleanPhone = phone.replace(/\D/g, "");
     try {
-      const { error: vErr } = await supabase.auth.verifyOtp({
-        phone: `+91${cleanPhone}`, token: otp, type: "sms",
-      });
-      if (vErr) { setError("Wrong OTP. Try again."); setLoading(false); return; }
-      const { data: athlete } = await supabase.from("athletes").select("*").eq("phone", cleanPhone).single();
-      localStorage.setItem("rann_session_phone", cleanPhone);
-      onLogin(athlete);
-    } catch (e) { setError("Verification failed. Try again."); }
+      const ok = await verifyPin(pin, foundAthlete.pin_salt, foundAthlete.pin_hash);
+      if (!ok) {
+        setError("Wrong PIN. Try again.");
+        setLoading(false);
+        return;
+      }
+      localStorage.setItem("rann_session_phone", foundAthlete.phone);
+      onLogin(foundAthlete);
+    } catch (e) {
+      setError("Login failed. Try again.");
+    }
     setLoading(false);
+  };
+
+  const setupPinAndLogin = async () => {
+    if (!validatePin(pin)) { setError("PIN must be exactly 4 digits"); return; }
+    if (pin !== pinConfirm) { setError("PINs don't match. Re-enter."); return; }
+    setLoading(true); setError("");
+    try {
+      const salt = generateSalt();
+      const hash = await hashPin(pin, salt);
+      const { error: uErr } = await supabase.from("athletes")
+        .update({ pin_hash: hash, pin_salt: salt, pin_set_at: new Date().toISOString() })
+        .eq("phone", foundAthlete.phone);
+      if (uErr) { setError("Could not save PIN: " + uErr.message); setLoading(false); return; }
+      localStorage.setItem("rann_session_phone", foundAthlete.phone);
+      onLogin({ ...foundAthlete, pin_hash: hash, pin_salt: salt });
+    } catch (e) {
+      setError("Could not save PIN. Try again.");
+    }
+    setLoading(false);
+  };
+
+  const goBack = () => {
+    setStep(1); setPin(""); setPinConfirm(""); setFoundAthlete(null); setError(""); setInfo("");
   };
 
   return (
     <div style={{ maxWidth: 420, margin: "40px auto" }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}><RannLogo size="md" /></div>
       <Card>
-        <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, marginBottom: 6, fontFamily: "'Cinzel', serif" }}>Welcome back, warrior</div>
-        <div style={{ fontSize: 13, color: COLORS.textGray, marginBottom: 24 }}>{step === 1 ? "Enter your registered phone number." : `OTP sent to +91 ${phone.slice(0, 5)} ${phone.slice(5)}`}</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, marginBottom: 6, fontFamily: "'Cinzel', serif" }}>
+          {step === 3 ? "Set your PIN" : "Welcome back, warrior"}
+        </div>
+        <div style={{ fontSize: 13, color: COLORS.textGray, marginBottom: 24 }}>
+          {step === 1 && "Enter your registered phone number."}
+          {step === 2 && `Enter your 4-digit PIN for +91 ${foundAthlete?.phone?.slice(0, 5)} ${foundAthlete?.phone?.slice(5)}`}
+          {step === 3 && `Welcome ${foundAthlete?.name?.split(" ")[0] || "warrior"}! Set a 4-digit PIN to secure your account.`}
+        </div>
 
-        {step === 1 ? (
+        {step === 1 && (
           <Input label="Phone Number" value={phone} onChange={(v) => { setPhone(v); setError(""); }} placeholder="10-digit Indian mobile" type="tel" required />
-        ) : (
-          <Input label="6-digit OTP" value={otp} onChange={(v) => { setOtp(v); setError(""); }} placeholder="Enter OTP" type="tel" required />
         )}
 
-        {info && <div style={{ background: "#D6F0DC", color: "#1F7A3A", padding: "10px 12px", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>{info}</div>}
+        {step === 2 && (
+          <Input label="4-digit PIN" value={pin} onChange={(v) => { setPin(v.replace(/\D/g, "").slice(0, 4)); setError(""); }} placeholder="••••" type="password" required />
+        )}
+
+        {step === 3 && (
+          <>
+            <Input label="Choose 4-digit PIN" value={pin} onChange={(v) => { setPin(v.replace(/\D/g, "").slice(0, 4)); setError(""); }} placeholder="••••" type="password" required helpText="Don't use 0000, 1234, or your birth year. Pick something memorable but not obvious." />
+            <Input label="Confirm PIN" value={pinConfirm} onChange={(v) => { setPinConfirm(v.replace(/\D/g, "").slice(0, 4)); setError(""); }} placeholder="••••" type="password" required />
+          </>
+        )}
+
+        {info && <div style={{ background: "#FFF4D4", color: "#7B5500", padding: "10px 12px", borderRadius: 6, fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>{info}</div>}
         {error && <div style={{ background: "#FDE8E8", color: COLORS.primary, padding: "10px 12px", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>{error}</div>}
 
-        <Button onClick={step === 1 ? sendOtp : verifyOtp} variant="primary" size="lg" style={{ width: "100%" }} disabled={loading}>
-          {loading ? "Please wait..." : step === 1 ? "Send OTP" : "Verify & Log In"}
+        <Button
+          onClick={step === 1 ? lookupPhone : (step === 2 ? verifyAndLogin : setupPinAndLogin)}
+          variant="primary" size="lg" style={{ width: "100%" }} disabled={loading}>
+          {loading ? "Please wait..." : step === 1 ? "Continue →" : (step === 2 ? "Log In" : "Set PIN & Log In")}
         </Button>
-        {step === 2 && <Button onClick={() => { setStep(1); setOtp(""); setError(""); setInfo(""); }} variant="ghost" size="sm" style={{ width: "100%", marginTop: 10 }}>← Use a different number</Button>}
+
+        {step !== 1 && (
+          <Button onClick={goBack} variant="ghost" size="sm" style={{ width: "100%", marginTop: 10 }}>← Use a different number</Button>
+        )}
+
+        {step === 2 && (
+          <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: COLORS.textGray, lineHeight: 1.5 }}>
+            Forgot your PIN? <span style={{ color: COLORS.primary, fontWeight: 600 }}>WhatsApp +91 {/* TODO: your contact */} </span> for a reset.
+          </div>
+        )}
 
         <div style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: COLORS.textGray }}>
           New warrior? <span onClick={() => onNav("register")} style={{ color: COLORS.primary, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>Register here</span>
@@ -863,6 +936,7 @@ const LoginPage = ({ onLogin, onNav }) => {
     </div>
   );
 };
+
 
 // ============================================================
 // REGISTRATION
@@ -876,6 +950,10 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
   const [gender, setGender] = useState(athlete?.gender || "");
   const [emergencyName, setEmergencyName] = useState(athlete?.emergency_name || "");
   const [emergencyPhone, setEmergencyPhone] = useState(athlete?.emergency_phone || "");
+  // PIN — only required for brand-new athletes (no existing pin_hash)
+  const isReturningWithPin = !!athlete?.pin_hash;
+  const [pin, setPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
   const [selectedEvents, setSelectedEvents] = useState([]);
   const [tiers, setTiers] = useState({});
   const [paymentNote, setPaymentNote] = useState("");
@@ -903,6 +981,10 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
     if (!age || parseInt(age) < 16) return "Must be 16 or older";
     if (!gender) return "Please select gender";
     if (!emergencyName.trim() || !validatePhone(emergencyPhone)) return "Emergency contact required";
+    if (!isReturningWithPin) {
+      if (!validatePin(pin)) return "Set a 4-digit PIN";
+      if (pin !== pinConfirm) return "PINs don't match";
+    }
     return null;
   };
 
@@ -951,6 +1033,14 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
         personal_bests: athlete?.personal_bests || {},
         updated_at: new Date().toISOString(),
       };
+      // If brand-new athlete, hash and store their PIN
+      if (!isReturningWithPin && validatePin(pin)) {
+        const salt = generateSalt();
+        const hash = await hashPin(pin, salt);
+        athleteRecord.pin_hash = hash;
+        athleteRecord.pin_salt = salt;
+        athleteRecord.pin_set_at = new Date().toISOString();
+      }
       const { error: aErr } = await supabase.from("athletes").upsert(athleteRecord, { onConflict: "phone" });
       if (aErr) throw aErr;
 
@@ -1045,6 +1135,16 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
               <Input label="Name" value={emergencyName} onChange={setEmergencyName} required />
               <Input label="Phone" value={emergencyPhone} onChange={setEmergencyPhone} type="tel" required />
             </div>
+            {!isReturningWithPin && (
+              <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, marginTop: 8, paddingTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, letterSpacing: 0.5 }}>SET YOUR LOGIN PIN</div>
+                <div style={{ fontSize: 12, color: COLORS.textGray, marginBottom: 12, lineHeight: 1.5 }}>
+                  Choose a 4-digit PIN. You'll use this with your phone number to log in. Don't use 0000, 1234, or your birth year.
+                </div>
+                <Input label="4-digit PIN" value={pin} onChange={(v) => setPin(v.replace(/\D/g, "").slice(0, 4))} placeholder="••••" type="password" required />
+                <Input label="Confirm PIN" value={pinConfirm} onChange={(v) => setPinConfirm(v.replace(/\D/g, "").slice(0, 4))} placeholder="••••" type="password" required />
+              </div>
+            )}
             {error && <div style={{ background: "#FDE8E8", color: COLORS.primary, padding: "10px 12px", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>{error}</div>}
             <Button onClick={() => { const e = validateStep1(); if (e) setError(e); else { setError(""); setStep(2); } }} variant="primary" size="lg" style={{ width: "100%" }}>Next: Choose Events →</Button>
           </>
@@ -1613,6 +1713,15 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
     refreshData();
   };
 
+  // Clear an athlete's PIN — they'll be prompted to set a new one on next login
+  const resetAthletePin = async (phone, name) => {
+    if (!confirm(`Reset PIN for ${name} (+91${phone})? They'll set a new PIN on their next login. WhatsApp them to confirm.`)) return;
+    const { error } = await supabase.from("athletes").update({ pin_hash: null, pin_salt: null, pin_set_at: null }).eq("phone", phone);
+    if (error) { alert("Reset failed: " + error.message); return; }
+    refreshData();
+    alert(`✓ PIN cleared for ${name}. Tell them to log in with their phone — they'll be prompted to set a new PIN.`);
+  };
+
   // Promote a waitlisted athlete to a confirmed registration for that event×tier
   const promoteFromWaitlist = async (waitlistRow) => {
     if (!confirm(`Promote ${waitlistRow.name} into ${waitlistRow.event_name} (${waitlistRow.tier})? They'll be added to the registration and need to pay separately.`)) return;
@@ -1978,7 +2087,7 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
                     <div style={{ fontSize: 12, color: COLORS.textGray }}>{formatPhone(r.phone)} · {(r.events_selected || []).join(", ")}</div>
                     <div style={{ fontSize: 12, marginTop: 2 }}>₹{r.total_cost} · ref: <span style={{ fontFamily: "monospace", color: COLORS.primary }}>{r.payment_note || "—"}</span></div>
                   </div>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {r.payment_status === "pending" ? (
                       <Button onClick={() => verifyPayment(r.event_id, r.phone)} variant="primary" size="sm">Mark Paid</Button>
                     ) : (
@@ -1987,6 +2096,7 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
                         <Button onClick={() => unverifyPayment(r.event_id, r.phone)} variant="light" size="sm">Undo</Button>
                       </>
                     )}
+                    <Button onClick={() => resetAthletePin(r.phone, r.name)} variant="ghost" size="sm" title="Clear their PIN — they'll set a new one on next login">🔑 Reset PIN</Button>
                   </div>
                 </div>
               ))}
