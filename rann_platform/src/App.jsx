@@ -536,7 +536,8 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
             <div style={{ padding: 18, textAlign: "center" }}>
               <div style={{ fontSize: 11, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>ENTRY</div>
               <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginTop: 2, marginBottom: 12 }}>₹{t.entry}</div>
-              <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 12, fontSize: 13, lineHeight: 1.8, color: COLORS.charcoal }}>
+              <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10, fontSize: 13, lineHeight: 1.8, color: COLORS.charcoal }}>
+                <div style={{ fontSize: 10, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 6 }}>◆ PRIZES ◆</div>
                 <div><span style={{ color: COLORS.gold, fontWeight: 700 }}>1st</span> · <strong>₹{t.entry * 2}</strong></div>
                 <div><span style={{ color: COLORS.textGray, fontWeight: 700 }}>2nd</span> · ₹{t.entry}</div>
                 <div><span style={{ color: COLORS.textGray, fontWeight: 700 }}>3-5</span> · ₹{Math.round(t.entry * 0.3)} each</div>
@@ -2326,6 +2327,34 @@ export default function App() {
   const [isAdminAuthed, setIsAdminAuthed] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  // Admin link visibility — only shows if URL has ?admin=1 OR user has tapped logo 5 times.
+  // Athletes never see "Admin" in the nav. Access via bookmarked secret URL.
+  const [adminRevealed, setAdminRevealed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("admin") === "1") return true;
+      if (sessionStorage.getItem("rann_admin_revealed") === "1") return true;
+    } catch (e) {}
+    return false;
+  });
+  const [logoTapCount, setLogoTapCount] = useState(0);
+  const [logoTapResetTimer, setLogoTapResetTimer] = useState(null);
+  const handleLogoTap = () => {
+    const next = logoTapCount + 1;
+    if (next >= 5) {
+      setAdminRevealed(true);
+      try { sessionStorage.setItem("rann_admin_revealed", "1"); } catch (e) {}
+      setLogoTapCount(0);
+      if (logoTapResetTimer) clearTimeout(logoTapResetTimer);
+    } else {
+      setLogoTapCount(next);
+      if (logoTapResetTimer) clearTimeout(logoTapResetTimer);
+      const t = setTimeout(() => setLogoTapCount(0), 2000);
+      setLogoTapResetTimer(t);
+    }
+  };
+
   const computeSlotCounts = useCallback((regs, waitlist, eventId) => {
     const counts = {};
     for (const r of (regs || [])) {
@@ -2438,7 +2467,7 @@ export default function App() {
       }}>
         <div onClick={() => setView("home")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
           <SwordsEmblem size={32} color={COLORS.primary} />
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <div onClick={handleLogoTap} style={{ display: "flex", alignItems: "baseline", gap: 8, cursor: "pointer", userSelect: "none" }}>
             <div style={{ fontSize: 14, color: COLORS.primary, fontFamily: "'Noto Serif Devanagari', serif", fontWeight: 700 }}>रण</div>
             <div style={{ fontSize: 22, fontFamily: "'Cinzel', serif", fontWeight: 700, letterSpacing: 4, color: COLORS.charcoal }}>RANN</div>
           </div>
@@ -2454,7 +2483,9 @@ export default function App() {
           ) : (
             <Button onClick={() => setView("login")} variant="ghost" size="sm">Login</Button>
           )}
-          <Button onClick={() => setView(isAdminAuthed ? "admin" : "admin-login")} variant="dark" size="sm">Admin</Button>
+          {adminRevealed && (
+            <Button onClick={() => setView(isAdminAuthed ? "admin" : "admin-login")} variant="dark" size="sm">Admin</Button>
+          )}
         </div>
       </div>
 
