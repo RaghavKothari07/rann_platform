@@ -925,12 +925,247 @@ const LoginPage = ({ onLogin, onNav }) => {
 
         {step === 2 && (
           <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: COLORS.textGray, lineHeight: 1.5 }}>
-            Forgot your PIN? <span style={{ color: COLORS.primary, fontWeight: 600 }}>WhatsApp +91 {/* TODO: your contact */} </span> for a reset.
+            Forgot your PIN? <span onClick={() => onNav("forgot-pin")} style={{ color: COLORS.primary, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>Reset it here</span>
           </div>
         )}
 
         <div style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: COLORS.textGray }}>
           New warrior? <span onClick={() => onNav("register")} style={{ color: COLORS.primary, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>Register here</span>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+
+// ============================================================
+// FORGOT PIN — Self-service reset using security questions
+// ============================================================
+const MAX_RESET_ATTEMPTS = 3;
+const LOCKOUT_HOURS = 1;
+
+const ForgotPinPage = ({ onNav, onLogin }) => {
+  // step 1 = phone lookup, 2 = answer questions, 3 = set new PIN, 4 = locked
+  const [step, setStep] = useState(1);
+  const [phone, setPhone] = useState("");
+  const [foundAthlete, setFoundAthlete] = useState(null);
+  const [questionPair, setQuestionPair] = useState(null); // { q1Id, q2Id }
+  const [a1, setA1] = useState("");
+  const [a2, setA2] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [newPinConfirm, setNewPinConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [lockedUntil, setLockedUntil] = useState(null);
+
+  const QUESTIONS = {
+    emergency_name: { label: "Emergency contact's first name", placeholder: "First name only", helpText: "The first name you gave during registration." },
+    emergency_phone: { label: "Emergency contact's phone (last 4 digits)", placeholder: "Last 4 digits", helpText: "Just the last 4 digits of the emergency contact phone you gave at registration.", maxLength: 4 },
+    age: { label: "Your age (as registered)", placeholder: "e.g., 24", helpText: "The age you gave when you first registered." },
+  };
+
+  // Pick 2 questions deterministically from the 3 — based on phone hash so retries get same questions.
+  // This prevents an attacker from re-rolling to find easy questions.
+  const pickQuestions = (athletePhone) => {
+    const ids = ["emergency_name", "emergency_phone", "age"];
+    // Simple deterministic shuffle: skip one based on last digit of phone
+    const skip = parseInt(athletePhone.slice(-1), 10) % 3;
+    const picked = ids.filter((_, i) => i !== skip);
+    return { q1Id: picked[0], q2Id: picked[1] };
+  };
+
+  // Step 1: look up athlete + check lockout
+  const lookupPhone = async () => {
+    if (!validatePhone(phone)) { setError("Please enter a valid 10-digit phone number"); return; }
+    setLoading(true); setError(""); setInfo("");
+    const cleanPhone = phone.replace(/\D/g, "");
+    try {
+      const { data: athlete, error: aErr } = await supabase
+        .from("athletes").select("*").eq("phone", cleanPhone).single();
+      if (aErr || !athlete) {
+        // Don't reveal whether the phone exists — generic error to prevent enumeration
+        setError("If a warrior with this number exists, you'll be able to reset. Check the number and try again.");
+        setLoading(false);
+        return;
+      }
+      // Check lockout
+      if (athlete.pin_reset_locked_until) {
+        const until = new Date(athlete.pin_reset_locked_until);
+        if (until.getTime() > Date.now()) {
+          setLockedUntil(until);
+          setStep(4);
+          setLoading(false);
+          return;
+        }
+      }
+      // Athlete has no PIN set yet — they should just log in normally
+      if (!athlete.pin_hash) {
+        setError("This account doesn't have a PIN set. Just log in normally — you'll be prompted to set one.");
+        setLoading(false);
+        return;
+      }
+      setFoundAthlete(athlete);
+      setQuestionPair(pickQuestions(cleanPhone));
+      setStep(2);
+    } catch (e) {
+      setError("Something went wrong. Try again.");
+    }
+    setLoading(false);
+  };
+
+  // Step 2: verify answers
+  const verifyAnswers = async () => {
+    if (!a1.trim() || !a2.trim()) { setError("Please answer both questions"); return; }
+    setLoading(true); setError("");
+
+    const checkAnswer = (questionId, userAnswer) => {
+      const ans = (userAnswer || "").trim();
+      if (questionId === "emergency_name") {
+        const expected = (foundAthlete.emergency_name || "").trim().split(/\s+/)[0].toLowerCase();
+        const got = ans.split(/\s+/)[0].toLowerCase();
+        return expected && got === expected;
+      }
+      if (questionId === "emergency_phone") {
+        const expected = (foundAthlete.emergency_phone || "").replace(/\D/g, "").slice(-4);
+        const got = ans.replace(/\D/g, "").slice(-4);
+        return expected.length === 4 && got === expected;
+      }
+      if (questionId === "age") {
+        const expected = parseInt(foundAthlete.age, 10);
+        const got = parseInt(ans, 10);
+        return !isNaN(expected) && !isNaN(got) && expected === got;
+      }
+      return false;
+    };
+
+    const correct1 = checkAnswer(questionPair.q1Id, a1);
+    const correct2 = checkAnswer(questionPair.q2Id, a2);
+
+    if (correct1 && correct2) {
+      // Success — clear attempts, advance to PIN setting
+      try {
+        await supabase.from("athletes").update({
+          pin_reset_attempts: 0, pin_reset_locked_until: null, pin_reset_last_attempt_at: new Date().toISOString(),
+        }).eq("phone", foundAthlete.phone);
+      } catch (e) {}
+      setError(""); setInfo("Identity verified. Now set your new PIN.");
+      setStep(3);
+      setLoading(false);
+      return;
+    }
+
+    // Failure — increment attempts, possibly lock
+    const newAttempts = (foundAthlete.pin_reset_attempts || 0) + 1;
+    const updates = { pin_reset_attempts: newAttempts, pin_reset_last_attempt_at: new Date().toISOString() };
+    if (newAttempts >= MAX_RESET_ATTEMPTS) {
+      const lockUntil = new Date(Date.now() + LOCKOUT_HOURS * 60 * 60 * 1000);
+      updates.pin_reset_locked_until = lockUntil.toISOString();
+    }
+    try {
+      await supabase.from("athletes").update(updates).eq("phone", foundAthlete.phone);
+      setFoundAthlete({ ...foundAthlete, ...updates });
+    } catch (e) {}
+
+    if (newAttempts >= MAX_RESET_ATTEMPTS) {
+      setLockedUntil(new Date(Date.now() + LOCKOUT_HOURS * 60 * 60 * 1000));
+      setStep(4);
+    } else {
+      const remaining = MAX_RESET_ATTEMPTS - newAttempts;
+      setError(`Verification failed. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining before this account is locked for ${LOCKOUT_HOURS} hour.`);
+    }
+    setLoading(false);
+  };
+
+  // Step 3: set new PIN
+  const saveNewPin = async () => {
+    if (!validatePin(newPin)) { setError("PIN must be exactly 4 digits"); return; }
+    if (newPin !== newPinConfirm) { setError("PINs don't match"); return; }
+    setLoading(true); setError("");
+    try {
+      const salt = generateSalt();
+      const hash = await hashPin(newPin, salt);
+      const { error: uErr } = await supabase.from("athletes").update({
+        pin_hash: hash, pin_salt: salt, pin_set_at: new Date().toISOString(),
+        pin_reset_attempts: 0, pin_reset_locked_until: null,
+      }).eq("phone", foundAthlete.phone);
+      if (uErr) { setError("Could not save: " + uErr.message); setLoading(false); return; }
+      // Auto-login after successful reset
+      localStorage.setItem("rann_session_phone", foundAthlete.phone);
+      onLogin({ ...foundAthlete, pin_hash: hash, pin_salt: salt });
+    } catch (e) {
+      setError("Could not save new PIN. Try again.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ maxWidth: 460, margin: "40px auto" }}>
+      <div style={{ textAlign: "center", marginBottom: 32 }}><RannLogo size="md" /></div>
+      <Card>
+        <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, marginBottom: 6, fontFamily: "'Cinzel', serif" }}>
+          {step === 4 ? "Account temporarily locked" : "Reset your PIN"}
+        </div>
+        <div style={{ fontSize: 13, color: COLORS.textGray, marginBottom: 20, lineHeight: 1.5 }}>
+          {step === 1 && "We'll verify your identity using info you gave at registration."}
+          {step === 2 && "Answer both questions correctly to reset your PIN. You have 3 attempts."}
+          {step === 3 && "Pick a new 4-digit PIN."}
+          {step === 4 && "Too many failed attempts. For security, this account can't reset its PIN for the next hour. If you can't wait, contact admin."}
+        </div>
+
+        {step === 1 && (
+          <>
+            <Input label="Phone Number" value={phone} onChange={(v) => { setPhone(v); setError(""); }} placeholder="10-digit Indian mobile" type="tel" required />
+          </>
+        )}
+
+        {step === 2 && questionPair && (
+          <>
+            <div style={{ background: COLORS.creamLight, padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 12, color: COLORS.textGray, lineHeight: 1.5 }}>
+              ◆ Verifying: <strong style={{ color: COLORS.charcoal }}>{foundAthlete?.name?.split(" ")[0] || "warrior"}</strong> · +91 {foundAthlete?.phone?.slice(0, 5)} {foundAthlete?.phone?.slice(5)}
+            </div>
+            <Input label={QUESTIONS[questionPair.q1Id].label}
+              value={a1} onChange={(v) => { setA1(v); setError(""); }}
+              placeholder={QUESTIONS[questionPair.q1Id].placeholder}
+              helpText={QUESTIONS[questionPair.q1Id].helpText}
+              required />
+            <Input label={QUESTIONS[questionPair.q2Id].label}
+              value={a2} onChange={(v) => { setA2(v); setError(""); }}
+              placeholder={QUESTIONS[questionPair.q2Id].placeholder}
+              helpText={QUESTIONS[questionPair.q2Id].helpText}
+              required />
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <Input label="New 4-digit PIN" value={newPin} onChange={(v) => { setNewPin(v.replace(/\D/g, "").slice(0, 4)); setError(""); }} placeholder="••••" type="password" required helpText="Don't reuse the old PIN. Avoid 0000, 1234, or your birth year." />
+            <Input label="Confirm new PIN" value={newPinConfirm} onChange={(v) => { setNewPinConfirm(v.replace(/\D/g, "").slice(0, 4)); setError(""); }} placeholder="••••" type="password" required />
+          </>
+        )}
+
+        {step === 4 && (
+          <div style={{ background: "#FDE8E8", color: COLORS.primary, padding: 14, borderRadius: 6, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+            Locked until: <strong>{lockedUntil ? lockedUntil.toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true, day: "numeric", month: "short" }) : "—"}</strong>
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              If this is your account and you need urgent access, contact admin via WhatsApp. Otherwise, try again later.
+            </div>
+          </div>
+        )}
+
+        {info && <div style={{ background: "#D6F0DC", color: "#1F7A3A", padding: "10px 12px", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>{info}</div>}
+        {error && <div style={{ background: "#FDE8E8", color: COLORS.primary, padding: "10px 12px", borderRadius: 6, fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>{error}</div>}
+
+        {step !== 4 && (
+          <Button
+            onClick={step === 1 ? lookupPhone : (step === 2 ? verifyAnswers : saveNewPin)}
+            variant="primary" size="lg" style={{ width: "100%" }} disabled={loading}>
+            {loading ? "Please wait..." : step === 1 ? "Continue →" : (step === 2 ? "Verify Identity" : "Save New PIN")}
+          </Button>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "center", fontSize: 13, color: COLORS.textGray }}>
+          <span onClick={() => onNav("login")} style={{ color: COLORS.primary, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>← Back to login</span>
         </div>
       </Card>
     </div>
@@ -2603,6 +2838,7 @@ export default function App() {
         {view === "home" && <HomePage event={event} athlete={athlete} onNav={setView} leaderboardPreview={leaderboardPreview} />}
         {view === "register" && <RegisterPage event={event} upiId={upiId} onComplete={handleRegistrationComplete} onNav={setView} athlete={athlete} slotCounts={slotCounts} allBatches={allBatches} />}
         {view === "login" && <LoginPage onLogin={handleLogin} onNav={setView} />}
+        {view === "forgot-pin" && <ForgotPinPage onLogin={handleLogin} onNav={setView} />}
         {view === "success" && <SuccessPage registration={lastRegistration} waitlistEntries={lastWaitlistEntries} batchTokens={lastBatchTokens} onNav={setView} upiId={upiId} />}
         {view === "dashboard" && athlete && <DashboardPage athlete={athlete} currentRegistration={myCurrentRegistration} eventResults={eventResults} onNav={setView} allAthletes={allAthletes} myBatchTokens={(allBatches || []).filter((b) => b.phone === athlete.phone && b.event_id === event?.id)} myWaitlist={(allWaitlist || []).filter((w) => w.phone === athlete.phone && w.event_id === event?.id && !w.promoted)} />}
         {view === "leaderboard" && <LeaderboardPage allAthletes={allAthletes} eventRecords={eventRecords} onNav={setView} currentAthletePhone={athlete?.phone} />}
