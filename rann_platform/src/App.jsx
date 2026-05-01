@@ -638,24 +638,20 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
             padding: 0,
             overflow: "hidden",
             border: name === "Gold" ? `3px solid ${COLORS.gold}` : `2px solid ${t.color}`,
-            boxShadow: name === "Gold" ? `0 4px 16px rgba(212, 160, 23, 0.25)` : "none",
+            boxShadow: name === "Gold"
+              ? `0 8px 24px rgba(212, 160, 23, 0.35), 0 2px 8px rgba(0, 0, 0, 0.08)`
+              : `0 1px 3px rgba(0, 0, 0, 0.05)`,
+            transform: name === "Gold" ? "translateY(-4px)" : "none",
             position: "relative",
           }}>
             <div style={{ background: t.color, color: name === "Silver" ? "#FFFFFF" : (name === "Gold" ? COLORS.charcoal : "#FFFFFF"), padding: "14px 12px", textAlign: "center", fontFamily: "'Cinzel', serif", fontSize: 17, fontWeight: 700, letterSpacing: 2 }}>
               {name.toUpperCase()}
+              {name === "Gold" && (
+                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, marginTop: 3, color: COLORS.charcoal, opacity: 0.75, fontFamily: "system-ui, sans-serif" }}>
+                  ★ MOST POPULAR ★
+                </div>
+              )}
             </div>
-            {name === "Gold" && (
-              <div style={{
-                background: COLORS.charcoal,
-                color: COLORS.gold,
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: 2,
-                padding: "4px 0",
-                textAlign: "center",
-                whiteSpace: "nowrap",
-              }}>★ MOST POPULAR ★</div>
-            )}
             <div style={{ padding: 18, textAlign: "center" }}>
               <div style={{ fontSize: 11, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>ENTRY</div>
               <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginTop: 2, marginBottom: 12 }}>₹{t.entry}</div>
