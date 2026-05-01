@@ -14,12 +14,16 @@ import ExcelJS from "https://esm.sh/exceljs@4.4.0";
 const SUPABASE_URL = "https://bfmlwpwtmjbesjjmvpoq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmbWx3cHd0bWpiZXNqam12cG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NjI4NzUsImV4cCI6MjA5MzEzODg3NX0.h-8Lvl1vYiPyLatAEnjSq5edwGT9fUrZ26tbWsdw5Rk";
 
+
 const supabaseEnabled = SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY_HERE";
 const supabase = supabaseEnabled ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 // ============================================================
 // CONSTANTS — Brand & Business Logic
 // ============================================================
+const WHATSAPP_COMMUNITY_URL = "https://chat.whatsapp.com/I7eGvUhn3GuEPu1mbk5fB0";
+const INSTAGRAM_URL = "https://instagram.com/rann.league";
+
 const COLORS = {
   primary: "#8B0000",
   primaryDark: "#6B0000",
@@ -875,6 +879,34 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
           </div>
         </Card>
       )}
+    </div>
+
+    {/* WhatsApp Community CTA */}
+    <div style={{ marginBottom: 40 }}>
+      <Card variant="dark" style={{ padding: 28, textAlign: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", left: -30, top: -30, opacity: 0.06, pointerEvents: "none" }}>
+          <SwordsEmblem size={180} color={COLORS.gold} />
+        </div>
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 3, fontWeight: 700, marginBottom: 6 }}>◆ JOIN THE BROTHERHOOD ◆</div>
+          <div style={{ fontFamily: "'Cinzel', serif", fontSize: 24, fontWeight: 700, color: COLORS.cream, marginBottom: 10 }}>The Warriors' Circle</div>
+          <div style={{ fontSize: 13, color: COLORS.cream, opacity: 0.85, marginBottom: 18, lineHeight: 1.6, maxWidth: 460, margin: "0 auto 18px" }}>
+            Join the Rann WhatsApp community for event updates, training tips, fellow warriors,
+            and the inside scoop on what's coming next.
+          </div>
+          <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "12px 28px",
+            background: "#25D366", color: "#FFFFFF",
+            borderRadius: 8, fontSize: 14, fontWeight: 700, letterSpacing: 0.5,
+            textDecoration: "none",
+            boxShadow: "0 4px 12px rgba(37, 211, 102, 0.4)",
+          }}>
+            <span style={{ fontSize: 18 }}>💬</span>
+            Join WhatsApp Community
+          </a>
+        </div>
+      </Card>
     </div>
   </div>
 );
@@ -1814,6 +1846,25 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
     )}
 
     <Button onClick={() => onNav("dashboard")} variant="primary" size="lg" style={{ width: "100%" }}>Go to my dashboard →</Button>
+
+    {/* WhatsApp Community — high-conversion moment */}
+    <Card style={{ marginTop: 18, padding: 18, borderLeft: `4px solid #25D366`, textAlign: "left" }}>
+      <div style={{ fontSize: 12, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>◆ ONE LAST THING ◆</div>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Join the Warriors' Circle</div>
+      <div style={{ fontSize: 12, color: COLORS.textGray, lineHeight: 1.5, marginBottom: 12 }}>
+        Get event updates, training tips, and connect with fellow warriors on WhatsApp.
+      </div>
+      <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
+        display: "inline-flex", alignItems: "center", gap: 8,
+        padding: "10px 18px",
+        background: "#25D366", color: "#FFFFFF",
+        borderRadius: 6, fontSize: 13, fontWeight: 700,
+        textDecoration: "none",
+      }}>
+        <span style={{ fontSize: 16 }}>💬</span>
+        Join WhatsApp Community
+      </a>
+    </Card>
   </div>
   );
 };
@@ -2071,6 +2122,18 @@ const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allA
           </Card>
         </>
       )}
+
+      <Card style={{ marginBottom: 16, padding: 14, background: COLORS.creamLight, borderLeft: `3px solid #25D366`, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 22 }}>💬</div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.charcoal }}>Warriors' Circle on WhatsApp</div>
+          <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 2 }}>Updates, tips, fellow warriors</div>
+        </div>
+        <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
+          padding: "8px 16px", background: "#25D366", color: "#FFFFFF",
+          borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none",
+        }}>Join →</a>
+      </Card>
 
       <Button onClick={() => onNav("home")} variant="ghost" style={{ width: "100%" }}>← Back to home</Button>
     </div>
@@ -3761,8 +3824,24 @@ export default function App() {
         <div style={{ marginBottom: 8 }}>
           <OrnamentDivider color={COLORS.gold} width={120} />
         </div>
-        <div style={{ fontStyle: "italic", fontSize: 13, opacity: 0.85 }}>Step into the Arena · Jaipur · @rann.league</div>
-        <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8 }}>रण में उतरो।</div>
+        <div style={{ fontStyle: "italic", fontSize: 13, opacity: 0.85 }}>Step into the Arena · Jaipur</div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 12 }}>
+          <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "6px 14px", background: "#25D366", color: "#FFFFFF",
+            borderRadius: 5, fontSize: 11, fontWeight: 700, textDecoration: "none",
+          }}>
+            <span style={{ fontSize: 13 }}>💬</span> WhatsApp
+          </a>
+          <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "6px 14px", background: COLORS.gold, color: COLORS.charcoal,
+            borderRadius: 5, fontSize: 11, fontWeight: 700, textDecoration: "none",
+          }}>
+            <span style={{ fontSize: 13 }}>📷</span> @rann.league
+          </a>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.5, marginTop: 12 }}>रण में उतरो।</div>
       </div>
     </div>
     </InAppBrowserGate>
