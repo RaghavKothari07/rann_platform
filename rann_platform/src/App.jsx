@@ -590,7 +590,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
         </div>
         <div>
           {isRegistrationOpen(event) ? (
-            <Button onClick={() => onNav("register")} variant="gold" size="lg" style={{ fontSize: 16, padding: "16px 36px" }}>
+            <Button onClick={() => onNav("register")} variant="gold" size="lg" style={{ fontSize: "clamp(13px, 4vw, 16px)", padding: "14px 20px", whiteSpace: "nowrap" }}>
               ⚔ ENTER THE ARENA →
             </Button>
           ) : (
@@ -634,17 +634,16 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       </div>
       <div className="rann-tier-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
         {Object.entries(TIERS).map(([name, t], i) => (
-          <Card key={name} style={{
+          <Card key={name} className="rann-tier-card" style={{
             padding: 0,
             overflow: "hidden",
             border: `2px solid ${t.color}`,
-            transform: name === "Gold" ? "scale(1.02)" : "scale(1)",
             position: "relative",
           }}>
             {name === "Gold" && (
-              <div style={{ position: "absolute", top: 8, right: 8, background: COLORS.gold, color: COLORS.charcoal, fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: "2px 8px", borderRadius: 3 }}>POPULAR</div>
+              <div className="rann-popular-badge" style={{ position: "absolute", top: 6, right: 6, background: COLORS.gold, color: COLORS.charcoal, fontSize: 8, fontWeight: 700, letterSpacing: 0.5, padding: "2px 6px", borderRadius: 3, zIndex: 1 }}>POPULAR</div>
             )}
-            <div style={{ background: t.color, color: name === "Silver" ? "#FFFFFF" : (name === "Gold" ? COLORS.charcoal : "#FFFFFF"), padding: "14px 16px", textAlign: "center", fontFamily: "'Cinzel', serif", fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>
+            <div style={{ background: t.color, color: name === "Silver" ? "#FFFFFF" : (name === "Gold" ? COLORS.charcoal : "#FFFFFF"), padding: "14px 8px", textAlign: "center", fontFamily: "'Cinzel', serif", fontSize: 16, fontWeight: 700, letterSpacing: 1.5 }}>
               {name.toUpperCase()}
             </div>
             <div style={{ padding: 18, textAlign: "center" }}>
@@ -896,13 +895,14 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
           </div>
           <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
             display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "12px 28px",
+            padding: "12px 22px",
             background: "#128C7E", color: "#FFFFFF",
-            borderRadius: 8, fontSize: 14, fontWeight: 700, letterSpacing: 0.5,
+            borderRadius: 8, fontSize: "clamp(12px, 3.5vw, 14px)", fontWeight: 700, letterSpacing: 0.3,
             textDecoration: "none",
+            whiteSpace: "nowrap",
             boxShadow: "0 4px 12px rgba(18, 140, 126, 0.4)",
           }}>
-            <span style={{ fontSize: 18 }}>💬</span>
+            <span style={{ fontSize: 16 }}>💬</span>
             Join WhatsApp Community
           </a>
         </div>
@@ -1860,6 +1860,7 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
         background: "#128C7E", color: "#FFFFFF",
         borderRadius: 6, fontSize: 13, fontWeight: 700,
         textDecoration: "none",
+        whiteSpace: "nowrap",
       }}>
         <span style={{ fontSize: 16 }}>💬</span>
         Join WhatsApp Community
@@ -3754,6 +3755,10 @@ export default function App() {
         @media (max-width: 600px) {
           .rann-event-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
           .rann-tier-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+          .rann-popular-badge { font-size: 7px !important; padding: 1px 5px !important; top: 4px !important; right: 4px !important; }
+        }
+        @media (max-width: 380px) {
+          .rann-popular-badge { display: none !important; }
         }
         @media (min-width: 900px) {
           .rann-event-grid { grid-template-columns: repeat(4, 1fr) !important; }
