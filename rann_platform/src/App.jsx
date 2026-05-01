@@ -192,24 +192,27 @@ const getSlotColor = (status) => {
   return { bg: "#2D7A47", text: "#FFFFFF", label: "Open" };
 };
 
-// Token format: B-PU-2-04 = Tier letter, Event code, Batch number, Position (zero-padded)
+// Token format: B-PU-M-2-04 = Tier letter, Event code, Gender, Batch, Position (zero-padded)
 const TIER_LETTERS = { Bronze: "B", Silver: "S", Gold: "G", Platinum: "P" };
 const EVENT_CODES = { "Push-ups": "PU", "Squats": "SQ", "Plank": "PL", "100m Sprint": "SP" };
+const GENDER_CATEGORIES = ["Men", "Women", "Mixed"];
+const GENDER_LETTERS = { Men: "M", Women: "W", Mixed: "X" };
+const GENDER_COLORS = { Men: "#1F4E79", Women: "#B83280", Mixed: "#5C8A2A" };
 const BATCH_SIZE = 5;
-const formatToken = (tier, eventName, batch, position) => {
+const formatToken = (tier, eventName, gender, batch, position) => {
   const t = TIER_LETTERS[tier] || "X";
   const e = EVENT_CODES[eventName] || "XX";
+  const g = GENDER_LETTERS[gender] || "X";
   const b = String(batch);
   const p = String(position).padStart(2, "0");
-  return `${t}-${e}-${b}-${p}`;
+  return `${t}-${e}-${g}-${b}-${p}`;
 };
-// Compute next batch & position for an (event×tier) given existing assignments
-const nextBatchSlot = (existingAssignments, eventName, tier) => {
-  const filtered = existingAssignments.filter((a) => a.event_name === eventName && a.tier === tier);
-  if (filtered.length >= MAX_PER_SLOT) return null; // full
-  // Fill batches in order: batch 1 fills first, then batch 2, etc.
-  // Find the first batch with a free seat.
-  for (let batch = 1; batch <= 5; batch++) {
+// Compute next batch & position for an (event×tier×gender)
+const nextBatchSlot = (existingAssignments, eventName, tier, gender) => {
+  const filtered = existingAssignments.filter((a) => a.event_name === eventName && a.tier === tier && a.gender_category === gender);
+  // Within a gender, batches fill sequentially. No hard cap on # of batches per gender —
+  // capacity is enforced at (event × tier) level by the parent caller.
+  for (let batch = 1; batch <= 10; batch++) {
     const inBatch = filtered.filter((a) => a.batch_number === batch);
     if (inBatch.length < BATCH_SIZE) {
       const usedPositions = new Set(inBatch.map((a) => a.position));
@@ -531,7 +534,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
     {/* The four events — themed cards */}
     <div style={{ marginBottom: 40 }}>
       <SectionHeader title="The Four Trials" subtitle="Sunday morning · 5-warrior heats" centered />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginTop: 24 }}>
+      <div className="rann-event-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginTop: 24 }}>
         {[
           { name: "Push-ups", spec: "60 sec · max reps", icon: "💪", desc: "Chest to block" },
           { name: "Squats", spec: "90 sec · max reps", icon: "🏋", desc: "Hip below knee" },
@@ -558,7 +561,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       <div style={{ fontSize: 13, color: COLORS.textGray, fontStyle: "italic", textAlign: "center", marginTop: -8, marginBottom: 24 }}>
         Pay your entry · Win double · Even 5th place keeps 30%
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+      <div className="rann-tier-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
         {Object.entries(TIERS).map(([name, t], i) => (
           <Card key={name} style={{
             padding: 0,
@@ -1199,6 +1202,9 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
   const [pinConfirm, setPinConfirm] = useState("");
   const [selectedEvents, setSelectedEvents] = useState([]);
   const [tiers, setTiers] = useState({});
+  const [genders, setGenders] = useState({}); // per-event: "Men" | "Women" | "Mixed"
+  // Suggest default gender from athlete's gender field
+  const defaultGender = (gender || "").toLowerCase().startsWith("f") ? "Women" : (gender || "").toLowerCase().startsWith("m") ? "Men" : "Mixed";
   const [paymentNote, setPaymentNote] = useState("");
   const [waiverAccepted, setWaiverAccepted] = useState(false);
   const [medicalOk, setMedicalOk] = useState(false);
@@ -1212,9 +1218,11 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
     if (selectedEvents.includes(e)) {
       setSelectedEvents(selectedEvents.filter((x) => x !== e));
       const newTiers = { ...tiers }; delete newTiers[e]; setTiers(newTiers);
+      const newGenders = { ...genders }; delete newGenders[e]; setGenders(newGenders);
     } else {
       setSelectedEvents([...selectedEvents, e]);
       setTiers({ ...tiers, [e]: "Bronze" });
+      setGenders({ ...genders, [e]: defaultGender });
     }
   };
 
@@ -1293,10 +1301,15 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
 
       let registration = null;
       const batchTokens = [];
+      // Build gender categories per event (only for confirmed)
+      const confirmedGenders = {};
+      for (const e of confirmedEvents) confirmedGenders[e] = genders[e] || "Mixed";
       if (confirmedEvents.length > 0) {
         registration = {
           event_id: event.id, phone: cleanPhone, name: name.trim(),
-          events_selected: confirmedEvents, tiers: confirmedTiers, is_all_rounder: confirmedEvents.length === 4,
+          events_selected: confirmedEvents, tiers: confirmedTiers,
+          gender_categories: confirmedGenders,
+          is_all_rounder: confirmedEvents.length === 4,
           total_cost: confirmedCost, payment_note: paymentNote.trim() || null,
           payment_status: "pending",
         };
@@ -1309,18 +1322,19 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
 
         for (const evName of confirmedEvents) {
           const evTier = confirmedTiers[evName];
+          const evGender = confirmedGenders[evName] || "Mixed";
           // Skip if this athlete already has a token for this slot (re-registration)
           const existingForMe = liveBatches.find((b) => b.phone === cleanPhone && b.event_name === evName && b.tier === evTier);
           if (existingForMe) {
             batchTokens.push(existingForMe);
             continue;
           }
-          const slot = nextBatchSlot(liveBatches, evName, evTier);
-          if (!slot) continue; // shouldn't happen since we checked capacity, but defensive
-          const token = formatToken(evTier, evName, slot.batch, slot.position);
+          const slot = nextBatchSlot(liveBatches, evName, evTier, evGender);
+          if (!slot) continue;
+          const token = formatToken(evTier, evName, evGender, slot.batch, slot.position);
           const newAssignment = {
             event_id: event.id, phone: cleanPhone, name: name.trim(),
-            event_name: evName, tier: evTier,
+            event_name: evName, tier: evTier, gender_category: evGender,
             batch_number: slot.batch, position: slot.position, token,
           };
           const { error: bErr } = await supabase.from("batch_assignments").insert(newAssignment);
@@ -1336,6 +1350,7 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
         const entry = {
           event_id: event.id, phone: cleanPhone, name: name.trim(),
           event_name: e, tier: tiers[e],
+          gender_category: genders[e] || "Mixed",
         };
         const { error: wErr } = await supabase.from("waitlist").upsert(entry, { onConflict: "event_id,phone,event_name,tier" });
         if (!wErr) waitlistEntries.push(entry);
@@ -1459,6 +1474,34 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
                         );
                       })}
                     </div>
+                    {/* Gender category picker */}
+                    {tiers[e] && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${COLORS.borderLight}` }}>
+                        <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>◆ COMPETE AGAINST ◆</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                          {GENDER_CATEGORIES.map((g) => {
+                            const sel = genders[e] === g;
+                            return (
+                              <div key={g} onClick={() => setGenders({ ...genders, [e]: g })} style={{
+                                padding: "6px 8px",
+                                borderRadius: 5,
+                                cursor: "pointer",
+                                background: sel ? GENDER_COLORS[g] : "#FFFFFF",
+                                color: sel ? "#FFFFFF" : GENDER_COLORS[g],
+                                border: `1.5px solid ${GENDER_COLORS[g]}`,
+                                fontSize: 11, fontWeight: 700, letterSpacing: 0.3,
+                                textAlign: "center",
+                              }}>{g}</div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 6, fontStyle: "italic", lineHeight: 1.5 }}>
+                          {genders[e] === "Men" && "You'll race in men-only batches."}
+                          {genders[e] === "Women" && "You'll race in women-only batches."}
+                          {genders[e] === "Mixed" && "Open category — anyone can join, any gender competes."}
+                        </div>
+                      </div>
+                    )}
                     {tiers[e] && getSlotInfo(slotCounts, e, tiers[e]).isFull && (
                       <div style={{ fontSize: 11, color: "#7B5500", background: "#FFF4D4", padding: "6px 10px", borderRadius: 4, marginTop: 8, lineHeight: 1.5 }}>
                         ⚠ This tier is full. You'll be added to the waitlist for {e} · {tiers[e]}. If someone drops, we promote you in order and notify via WhatsApp. <strong>You will not be charged unless promoted.</strong>
@@ -1647,7 +1690,7 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
             }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream }}>{t.event_name}</div>
-                <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · Batch {t.batch_number} · Position {t.position}</div>
+                <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · {t.gender_category || "Mixed"} · Batch {t.batch_number} · Position {t.position}</div>
               </div>
               <div style={{
                 fontFamily: "'Cinzel', monospace", fontSize: 18, fontWeight: 700,
@@ -1827,7 +1870,7 @@ const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allA
               }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream }}>{t.event_name}</div>
-                  <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · Batch {t.batch_number} · Position {t.position}</div>
+                  <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · {t.gender_category || "Mixed"} · Batch {t.batch_number} · Position {t.position}</div>
                 </div>
                 <div style={{
                   fontFamily: "'Cinzel', monospace", fontSize: 18, fontWeight: 700,
@@ -2037,13 +2080,14 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       // Generate batch token for the promoted athlete
       const { data: freshBatches } = await supabase.from("batch_assignments").select("*").eq("event_id", waitlistRow.event_id);
       const liveBatches = freshBatches || [];
-      const slot = nextBatchSlot(liveBatches, waitlistRow.event_name, waitlistRow.tier);
+      const wlGender = waitlistRow.gender_category || "Mixed";
+      const slot = nextBatchSlot(liveBatches, waitlistRow.event_name, waitlistRow.tier, wlGender);
       let assignedToken = null;
       if (slot) {
-        assignedToken = formatToken(waitlistRow.tier, waitlistRow.event_name, slot.batch, slot.position);
+        assignedToken = formatToken(waitlistRow.tier, waitlistRow.event_name, wlGender, slot.batch, slot.position);
         await supabase.from("batch_assignments").insert({
           event_id: waitlistRow.event_id, phone: waitlistRow.phone, name: waitlistRow.name,
-          event_name: waitlistRow.event_name, tier: waitlistRow.tier,
+          event_name: waitlistRow.event_name, tier: waitlistRow.tier, gender_category: wlGender,
           batch_number: slot.batch, position: slot.position, token: assignedToken,
         });
       }
@@ -2116,7 +2160,11 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       const allOrdered = [];
       for (const r of (regs || [])) {
         for (const evName of (r.events_selected || [])) {
-          allOrdered.push({ phone: r.phone, name: r.name, event_name: evName, tier: r.tiers?.[evName] });
+          allOrdered.push({
+            phone: r.phone, name: r.name, event_name: evName,
+            tier: r.tiers?.[evName],
+            gender_category: r.gender_categories?.[evName] || "Mixed",
+          });
         }
       }
       // Wipe all existing for this event
@@ -2125,12 +2173,13 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       const live = [];
       for (const item of allOrdered) {
         if (!item.tier) continue;
-        const slot = nextBatchSlot(live, item.event_name, item.tier);
+        const slot = nextBatchSlot(live, item.event_name, item.tier, item.gender_category);
         if (!slot) continue;
-        const token = formatToken(item.tier, item.event_name, slot.batch, slot.position);
+        const token = formatToken(item.tier, item.event_name, item.gender_category, slot.batch, slot.position);
         const newRow = {
           event_id: event.id, phone: item.phone, name: item.name,
           event_name: item.event_name, tier: item.tier,
+          gender_category: item.gender_category,
           batch_number: slot.batch, position: slot.position, token,
         };
         await supabase.from("batch_assignments").insert(newRow);
@@ -2229,6 +2278,158 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
 
       setCsvStatus(`✓ Updated ${updated} athlete${updated !== 1 ? "s" : ""}, skipped ${skipped} (not registered)`);
       setCsvInput("");
+      refreshData();
+    } catch (err) {
+      setCsvStatus(`✗ Error: ${err.message}`);
+    }
+  };
+
+  // Generate pre-filled Excel template for event-day results entry
+  const downloadResultsTemplate = () => {
+    try {
+      const wb = XLSX.utils.book_new();
+      const phoneToWid = {};
+      for (const a of allAthletes) phoneToWid[a.phone] = formatWarriorId(a.warrior_id) || "";
+
+      // Row per (athlete × event they registered for)
+      const rows = [];
+      const batchesForEvent = (allBatches || []).filter((b) => b.event_id === event?.id);
+      for (const b of batchesForEvent) {
+        rows.push({
+          "Warrior ID": phoneToWid[b.phone] || "",
+          "Token": b.token,
+          "Name": b.name,
+          "Phone": b.phone,
+          "Event": b.event_name,
+          "Tier": b.tier,
+          "Gender": b.gender_category || "Mixed",
+          "Batch": b.batch_number,
+          "Position in Batch": b.position,
+          "Position (1-5)": "",
+          "Value (reps/seconds/etc)": "",
+          "Personal Best (Y/N)": "",
+        });
+      }
+      // Sort: event → tier → gender → batch → position
+      const ev_order = (e) => EVENTS.indexOf(e);
+      const tier_order = (t) => Object.keys(TIERS).indexOf(t);
+      const g_order = (g) => GENDER_CATEGORIES.indexOf(g);
+      rows.sort((a, b) => {
+        return (ev_order(a.Event) - ev_order(b.Event))
+          || (tier_order(a.Tier) - tier_order(b.Tier))
+          || (g_order(a.Gender) - g_order(b.Gender))
+          || (a.Batch - b.Batch)
+          || (a["Position in Batch"] - b["Position in Batch"]);
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      // Column widths
+      ws["!cols"] = [
+        { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 13 }, { wch: 13 },
+        { wch: 10 }, { wch: 8 }, { wch: 6 }, { wch: 8 }, { wch: 12 },
+        { wch: 22 }, { wch: 10 },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws, "Results Template");
+
+      // Instructions sheet
+      const instructions = [
+        ["RANN — Event-Day Results Template"],
+        [""],
+        ["HOW TO USE:"],
+        ["1. Print this sheet OR open on tablet/laptop at the venue"],
+        ["2. As each batch finishes, fill in the 'Position (1-5)' column"],
+        ["   1 = winner, 2 = second, 3-5 = third/fourth/fifth"],
+        ["3. Enter their actual value (e.g., 47 for 47 push-ups, 14.2 for 14.2-second sprint)"],
+        ["4. Mark 'Personal Best (Y/N)' = Y if they beat their own previous record"],
+        ["5. After event: upload this filled .xlsx in Admin → Import Results → Upload Excel"],
+        [""],
+        ["NOTES:"],
+        ["• Don't change Warrior ID, Token, Phone, or Event columns — those identify the athlete"],
+        ["• Leave Position blank for athletes who didn't show up (DNS)"],
+        ["• Platform calculates points automatically using your formula"],
+      ];
+      const wsInstr = XLSX.utils.aoa_to_sheet(instructions);
+      wsInstr["!cols"] = [{ wch: 80 }];
+      XLSX.utils.book_append_sheet(wb, wsInstr, "Instructions");
+
+      const filename = `Rann_Results_${event?.id || "event"}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } catch (e) {
+      alert("Could not generate template: " + e.message);
+    }
+  };
+
+  // Upload filled Excel template and process
+  const handleResultsExcelUpload = async (file) => {
+    if (!file) return;
+    setCsvStatus("Reading Excel file...");
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheetName = wb.SheetNames.find((n) => n.toLowerCase().includes("result")) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      if (!rows.length) throw new Error("Sheet has no rows");
+
+      // Group by phone
+      const byPhone = {};
+      for (const row of rows) {
+        const phone = String(row["Phone"] || "").replace(/\D/g, "");
+        const evName = row["Event"] || "";
+        const positionRaw = row["Position (1-5)"];
+        if (!phone || !evName) continue;
+        if (positionRaw === "" || positionRaw === null || positionRaw === undefined) continue; // skip DNS
+        const position = parseInt(positionRaw, 10);
+        if (isNaN(position) || position < 1 || position > 5) continue;
+        const isPB = String(row["Personal Best (Y/N)"] || "").trim().toLowerCase().startsWith("y");
+        if (!byPhone[phone]) byPhone[phone] = [];
+        byPhone[phone].push({
+          event: evName,
+          position,
+          value: String(row["Value (reps/seconds/etc)"] || "").trim(),
+          isPB,
+          tier: row["Tier"] || "Bronze",
+          gender_category: row["Gender"] || "Mixed",
+        });
+      }
+
+      let updated = 0, skipped = 0;
+      const recordUpdates = {};
+      for (const [phone, results] of Object.entries(byPhone)) {
+        const { data: regs } = await supabase.from("registrations").select("*").eq("event_id", event.id).eq("phone", phone);
+        const reg = regs?.[0];
+        const { data: aths } = await supabase.from("athletes").select("*").eq("phone", phone);
+        const athlete = aths?.[0];
+        if (!athlete) { skipped++; continue; }
+        const tiers = reg?.tiers || {};
+        for (const r of results) if (!tiers[r.event]) tiers[r.event] = r.tier || "Bronze";
+
+        const dayPoints = calculatePoints(results, tiers);
+        const newTotal = (athlete.total_points || 0) + dayPoints;
+        const newAttended = (athlete.events_attended || 0) + 1;
+        const personalBests = athlete.personal_bests || {};
+        for (const r of results) {
+          if (r.value) {
+            if (!personalBests[r.event] || r.isPB) personalBests[r.event] = r.value;
+          }
+          if (r.value && r.position === 1) {
+            recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
+          }
+        }
+        await supabase.from("athletes").update({
+          total_points: newTotal, events_attended: newAttended, personal_bests: personalBests, updated_at: new Date().toISOString(),
+        }).eq("phone", phone);
+        await supabase.from("event_results").upsert({
+          event_id: event.id, phone, name: athlete.name, event_date: event.event_date,
+          results: results.map((r) => ({ ...r, tier: tiers[r.event] || "Bronze" })),
+          total_points: dayPoints,
+        }, { onConflict: "event_id,phone" });
+        updated++;
+      }
+      for (const rec of Object.values(recordUpdates)) {
+        await supabase.from("event_records").upsert(rec, { onConflict: "event_name" });
+      }
+      setCsvStatus(`✓ Updated ${updated} athlete${updated !== 1 ? "s" : ""}, skipped ${skipped} (not registered or invalid). Leaderboard refreshed.`);
       refreshData();
     } catch (err) {
       setCsvStatus(`✗ Error: ${err.message}`);
@@ -2525,10 +2726,12 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
             // Group: event_name -> tier -> batch_number -> [rows sorted by position]
             const tree = {};
             for (const b of batchesForEvent) {
+              const g = b.gender_category || "Mixed";
               if (!tree[b.event_name]) tree[b.event_name] = {};
               if (!tree[b.event_name][b.tier]) tree[b.event_name][b.tier] = {};
-              if (!tree[b.event_name][b.tier][b.batch_number]) tree[b.event_name][b.tier][b.batch_number] = [];
-              tree[b.event_name][b.tier][b.batch_number].push(b);
+              if (!tree[b.event_name][b.tier][g]) tree[b.event_name][b.tier][g] = {};
+              if (!tree[b.event_name][b.tier][g][b.batch_number]) tree[b.event_name][b.tier][g][b.batch_number] = [];
+              tree[b.event_name][b.tier][g][b.batch_number].push(b);
             }
             return EVENTS.map((evName) => {
               const tierGroups = tree[evName];
@@ -2539,35 +2742,46 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
                     {evName.toUpperCase()}
                   </div>
                   {Object.keys(TIERS).map((tier) => {
-                    const batches = tierGroups[tier];
-                    if (!batches) return null;
+                    const genderGroups = tierGroups[tier];
+                    if (!genderGroups) return null;
                     return (
                       <div key={tier} style={{ marginBottom: 16, paddingLeft: 8 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: TIERS[tier].color, marginBottom: 6, letterSpacing: 0.5 }}>{tier} Tier</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-                          {[1, 2, 3, 4, 5].filter((bn) => batches[bn]).map((bn) => {
-                            const rows = batches[bn].sort((a, b) => a.position - b.position);
-                            return (
-                              <Card key={bn} style={{ padding: 12, borderTop: `3px solid ${TIERS[tier].color}` }}>
-                                <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 1, fontWeight: 700, marginBottom: 6 }}>BATCH {bn}</div>
-                                {rows.map((r) => (
-                                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", fontSize: 12, borderBottom: `1px dashed ${COLORS.borderLight}` }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontWeight: 600 }}>{r.position}. {r.name}</div>
-                                      <div style={{ fontSize: 10, color: COLORS.textGray }}>{formatPhone(r.phone)}</div>
-                                    </div>
-                                    <div style={{ fontFamily: "monospace", fontSize: 11, color: COLORS.primary, fontWeight: 700 }}>{r.token}</div>
-                                  </div>
-                                ))}
-                                {Array.from({ length: BATCH_SIZE - rows.length }).map((_, i) => (
-                                  <div key={`empty-${i}`} style={{ padding: "5px 0", fontSize: 11, color: COLORS.textGray, fontStyle: "italic", borderBottom: `1px dashed ${COLORS.borderLight}` }}>
-                                    {rows.length + i + 1}. (empty slot)
-                                  </div>
-                                ))}
-                              </Card>
-                            );
-                          })}
-                        </div>
+                        {GENDER_CATEGORIES.map((gender) => {
+                          const batches = genderGroups[gender];
+                          if (!batches) return null;
+                          return (
+                            <div key={gender} style={{ marginBottom: 12, paddingLeft: 6 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: GENDER_COLORS[gender], marginBottom: 4, letterSpacing: 1 }}>
+                                ◆ {gender.toUpperCase()} ◆
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                                {Object.keys(batches).sort((a, b) => Number(a) - Number(b)).map((bn) => {
+                                  const rows = batches[bn].sort((a, b) => a.position - b.position);
+                                  return (
+                                    <Card key={bn} style={{ padding: 12, borderTop: `3px solid ${GENDER_COLORS[gender]}` }}>
+                                      <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 1, fontWeight: 700, marginBottom: 6 }}>BATCH {bn}</div>
+                                      {rows.map((r) => (
+                                        <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", fontSize: 12, borderBottom: `1px dashed ${COLORS.borderLight}` }}>
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 600 }}>{r.position}. {r.name}</div>
+                                            <div style={{ fontSize: 10, color: COLORS.textGray }}>{formatPhone(r.phone)}</div>
+                                          </div>
+                                          <div style={{ fontFamily: "monospace", fontSize: 11, color: COLORS.primary, fontWeight: 700 }}>{r.token}</div>
+                                        </div>
+                                      ))}
+                                      {Array.from({ length: BATCH_SIZE - rows.length }).map((_, i) => (
+                                        <div key={`empty-${i}`} style={{ padding: "5px 0", fontSize: 11, color: COLORS.textGray, fontStyle: "italic", borderBottom: `1px dashed ${COLORS.borderLight}` }}>
+                                          {rows.length + i + 1}. (empty slot)
+                                        </div>
+                                      ))}
+                                    </Card>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   })}
@@ -2579,28 +2793,62 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       )}
 
       {tab === "results" && (
-        <Card>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Import results for {event?.id}</div>
-          <div style={{ fontSize: 12, color: COLORS.textGray, marginBottom: 12, lineHeight: 1.6 }}>
-            Paste CSV with columns: <span style={{ fontFamily: "monospace", background: COLORS.creamLight, padding: "1px 6px", borderRadius: 3 }}>phone,event,position,value,isPB</span>
-          </div>
-          <div style={{ background: COLORS.creamLight, padding: 12, borderRadius: 6, fontSize: 12, fontFamily: "monospace", marginBottom: 12, whiteSpace: "pre-wrap" }}>
+        <div>
+          <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.gold}` }}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>📊 Excel Workflow (Recommended)</div>
+            <div style={{ fontSize: 12, color: COLORS.textGray, marginBottom: 14, lineHeight: 1.6 }}>
+              <strong>Saturday night:</strong> Download the template — pre-filled with every athlete's name, token, and batch.<br/>
+              <strong>Sunday at venue:</strong> Print or open on tablet. Fill in positions (1-5) and Y for personal bests.<br/>
+              <strong>After event:</strong> Upload the filled .xlsx — platform calculates all points & updates leaderboard.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              <Button onClick={downloadResultsTemplate} variant="dark">⬇ Download Template</Button>
+              <label style={{ display: "inline-block" }}>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleResultsExcelUpload(f);
+                    e.target.value = "";
+                  }}
+                  style={{ display: "none" }}
+                />
+                <span style={{
+                  display: "inline-block", padding: "10px 20px",
+                  background: COLORS.primary, color: COLORS.cream,
+                  borderRadius: 6, fontSize: 13, fontWeight: 600,
+                  cursor: "pointer", border: "none",
+                }}>⬆ Upload Filled Excel</span>
+              </label>
+            </div>
+            {csvStatus && (
+              <div style={{ marginTop: 4, padding: "10px 12px", borderRadius: 6, fontSize: 13, background: csvStatus.startsWith("✓") ? "#D6F0DC" : "#FDE8E8", color: csvStatus.startsWith("✓") ? "#1F7A3A" : COLORS.primary }}>{csvStatus}</div>
+            )}
+          </Card>
+
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 600, color: COLORS.textGray, padding: 8 }}>
+              ▸ Power user: paste CSV instead
+            </summary>
+            <Card style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: COLORS.textGray, marginBottom: 12, lineHeight: 1.6 }}>
+                Paste CSV with columns: <span style={{ fontFamily: "monospace", background: COLORS.creamLight, padding: "1px 6px", borderRadius: 3 }}>phone,event,position,value,isPB</span>
+              </div>
+              <div style={{ background: COLORS.creamLight, padding: 12, borderRadius: 6, fontSize: 12, fontFamily: "monospace", marginBottom: 12, whiteSpace: "pre-wrap" }}>
 {`phone,event,position,value,isPB
 9876543210,Push-ups,1,52,true
-9876543210,Squats,2,68,false
-9988776655,Push-ups,2,48,true
-9988776655,100m Sprint,1,12.4,true`}
-          </div>
-          <textarea value={csvInput} onChange={(e) => setCsvInput(e.target.value)} placeholder="Paste CSV here..."
-            style={{ width: "100%", minHeight: 180, padding: 12, fontSize: 13, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box" }} />
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <Button onClick={importResults} variant="primary">Import & Calculate Points</Button>
-            <Button onClick={() => { setCsvInput(""); setCsvStatus(""); }} variant="light">Clear</Button>
-          </div>
-          {csvStatus && (
-            <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 6, fontSize: 13, background: csvStatus.startsWith("✓") ? "#D6F0DC" : "#FDE8E8", color: csvStatus.startsWith("✓") ? "#1F7A3A" : COLORS.primary }}>{csvStatus}</div>
-          )}
-        </Card>
+9876543210,Squats,2,68,false`}
+              </div>
+              <textarea value={csvInput} onChange={(e) => setCsvInput(e.target.value)} placeholder="Paste CSV here..."
+                style={{ width: "100%", minHeight: 140, padding: 12, fontSize: 13, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box" }} />
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <Button onClick={importResults} variant="primary">Import CSV</Button>
+                <Button onClick={() => { setCsvInput(""); setCsvStatus(""); }} variant="light">Clear</Button>
+              </div>
+            </Card>
+          </details>
+        </div>
       )}
 
       {tab === "event" && (
@@ -3001,6 +3249,14 @@ export default function App() {
         button:active:not(:disabled) { transform: scale(0.98) translateY(0); }
         button { transition: all 0.18s ease; }
         input:focus, select:focus, textarea:focus { outline: 2px solid ${COLORS.gold}; outline-offset: 1px; border-color: ${COLORS.gold}; }
+        @media (max-width: 600px) {
+          .rann-event-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+          .rann-tier-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+        }
+        @media (min-width: 900px) {
+          .rann-event-grid { grid-template-columns: repeat(4, 1fr) !important; }
+          .rann-tier-grid { grid-template-columns: repeat(4, 1fr) !important; }
+        }
       `}</style>
 
       {/* Top nav - dramatic brand bar */}
