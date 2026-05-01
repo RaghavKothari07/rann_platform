@@ -14,7 +14,6 @@ import ExcelJS from "https://esm.sh/exceljs@4.4.0";
 const SUPABASE_URL = "https://bfmlwpwtmjbesjjmvpoq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmbWx3cHd0bWpiZXNqam12cG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NjI4NzUsImV4cCI6MjA5MzEzODg3NX0.h-8Lvl1vYiPyLatAEnjSq5edwGT9fUrZ26tbWsdw5Rk";
 
-
 const supabaseEnabled = SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY_HERE";
 const supabase = supabaseEnabled ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -553,17 +552,17 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
     )}
 
     {/* Next event hero — dark dramatic */}
-    <Card variant="dark" style={{ marginBottom: 40, padding: 40, position: "relative", overflow: "hidden" }}>
+    <Card variant="dark" style={{ marginBottom: 40, padding: "28px 20px", position: "relative", overflow: "hidden" }}>
       {/* Background swords */}
       <div style={{ position: "absolute", right: -30, top: -30, opacity: 0.08, pointerEvents: "none" }}>
         <SwordsEmblem size={280} color={COLORS.gold} />
       </div>
       <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
-        <div style={{ flex: "1 1 300px" }}>
+        <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <div style={{ color: COLORS.gold, fontSize: 12, letterSpacing: 3, fontWeight: 700, marginBottom: 12 }}>
             ◆ NEXT BATTLE · {isRegistrationOpen(event) ? "OPEN" : (event?.status === "results" ? "RESULTS LIVE" : "CLOSED")} ◆
           </div>
-          <div style={{ fontSize: 32, fontWeight: 700, fontFamily: "'Cinzel', serif", letterSpacing: 0.5, marginBottom: 14, lineHeight: 1.2 }}>
+          <div style={{ fontSize: "clamp(24px, 6vw, 32px)", fontWeight: 700, fontFamily: "'Cinzel', serif", letterSpacing: 0.5, marginBottom: 14, lineHeight: 1.2, wordBreak: "break-word" }}>
             {event?.event_date || "Date TBA"}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3460,24 +3459,20 @@ const detectInAppBrowser = () => {
     if (params.get("forcegate") === "1") return "Forced (debug)"; // show gate even on Safari
   } catch (e) {}
 
-  // Explicit in-app app signatures (high confidence)
+  // Only catch CONFIRMED in-app browsers via explicit signatures.
+  // We default to LETTING USERS THROUGH if we're not sure — better to risk a slightly
+  // broken WhatsApp experience than to wrongly gate a legitimate browser.
   if (/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)) return "Facebook";
   if (/Instagram/i.test(ua)) return "Instagram";
   if (/LinkedInApp/i.test(ua)) return "LinkedIn";
-  if (/Twitter|X\/| Line\/|GSA\/|TelegramiOS/i.test(ua)) return "another app";
-
+  if (/Twitter|TwitterAndroid|X\/| Line\/|TelegramiOS/i.test(ua)) return "another app";
+  // WhatsApp iOS UA pattern (specific): contains "Mobile/" but lacks "Safari/" entirely
+  // This is more permissive than before — only flags clear WhatsApp pattern.
   const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  if (!isIOS) return null;
-
-  // Real iOS Safari has BOTH "Safari/" AND "Version/" in the UA.
-  // WhatsApp's iOS WKWebView has neither (or only one). Other in-app webviews vary.
-  const hasSafari = /Safari\//i.test(ua);
-  const hasVersion = /Version\/\d/i.test(ua);
-  // CriOS = Chrome iOS, FxiOS = Firefox iOS, EdgiOS = Edge iOS, OPiOS = Opera iOS — all OK
-  const isKnownGoodBrowser = /CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua);
-  if (isKnownGoodBrowser) return null;
-  if (hasSafari && hasVersion) return null; // real Safari
-  return "WhatsApp or another app's built-in browser";
+  if (isIOS && /Mobile\//i.test(ua) && !/Safari\//i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua)) {
+    return "WhatsApp or another app's built-in browser";
+  }
+  return null; // default: allow through
 };
 
 const InAppBrowserGate = ({ children }) => {
@@ -3611,10 +3606,37 @@ const InAppBrowserGate = ({ children }) => {
 // ROOT APP
 // ============================================================
 export default function App() {
-  const [view, setView] = useState("home");
+  const [view, setViewRaw] = useState("home");
   const [event, setEvent] = useState(null);
   const [upiId, setUpiId] = useState("rann.league@upi");
   const [athlete, setAthlete] = useState(null);
+
+  // Navigation wrapper: tracks view changes in browser history so back button works.
+  const setView = (newView) => {
+    if (typeof window !== "undefined" && newView !== view) {
+      try {
+        window.history.pushState({ view: newView }, "", `#${newView}`);
+      } catch (e) {}
+    }
+    setViewRaw(newView);
+  };
+
+  // Listen for browser back/forward
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = (e) => {
+      const v = e.state?.view || (window.location.hash.replace("#", "") || "home");
+      setViewRaw(v);
+    };
+    window.addEventListener("popstate", onPopState);
+    // Initialize hash on first load
+    try {
+      const initial = window.location.hash.replace("#", "");
+      if (initial && initial !== "home") setViewRaw(initial);
+      window.history.replaceState({ view: view }, "", window.location.hash || "#home");
+    } catch (e) {}
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const [allAthletes, setAllAthletes] = useState([]);
   const [allRegistrations, setAllRegistrations] = useState([]);
   const [allResults, setAllResults] = useState([]);
@@ -3745,10 +3767,14 @@ export default function App() {
       backgroundPosition: "0 0, 15px 15px",
       minHeight: "100vh",
       color: COLORS.charcoal,
+      overflowX: "hidden",
+      maxWidth: "100vw",
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Noto+Serif+Devanagari:wght@600;700&display=swap');
-        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden !important; max-width: 100vw; margin: 0; padding: 0; }
+        * { box-sizing: border-box; max-width: 100vw; }
+        img, video, iframe { max-width: 100% !important; height: auto; }
         button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         button:active:not(:disabled) { transform: scale(0.98) translateY(0); }
         button { transition: all 0.18s ease; }
