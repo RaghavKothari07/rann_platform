@@ -746,7 +746,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
         <div style={{ fontSize: 12, color: COLORS.textGray, fontStyle: "italic", textAlign: "center", marginBottom: 16 }}>
           Every belt unlocks real rewards · Physical · Social · Financial · Competitive
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="rann-belt-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {[
             {
               name: "White Belt", min: "0+ pts", num: 1,
@@ -3844,6 +3844,9 @@ export default function App() {
         @media (max-width: 600px) {
           .rann-event-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
           .rann-tier-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+        }
+        @media (max-width: 480px) {
+          .rann-belt-grid { grid-template-columns: 1fr !important; }
         }
         @media (min-width: 900px) {
           .rann-event-grid { grid-template-columns: repeat(4, 1fr) !important; }
