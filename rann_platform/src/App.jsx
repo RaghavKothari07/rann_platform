@@ -646,11 +646,6 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
           }}>
             <div style={{ background: t.color, color: name === "Silver" ? "#FFFFFF" : (name === "Gold" ? COLORS.charcoal : "#FFFFFF"), padding: "14px 12px", textAlign: "center", fontFamily: "'Cinzel', serif", fontSize: 17, fontWeight: 700, letterSpacing: 2 }}>
               {name.toUpperCase()}
-              {name === "Gold" && (
-                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, marginTop: 3, color: COLORS.charcoal, opacity: 0.75, fontFamily: "system-ui, sans-serif" }}>
-                  ★ MOST POPULAR ★
-                </div>
-              )}
             </div>
             <div style={{ padding: 18, textAlign: "center" }}>
               <div style={{ fontSize: 11, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>ENTRY</div>
