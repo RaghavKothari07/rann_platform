@@ -544,29 +544,29 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
     ) : (
       <Card style={{
         marginBottom: 24,
-        padding: 18,
+        padding: "22px 24px",
         background: `linear-gradient(135deg, #FFFFFF 0%, ${COLORS.creamLight} 100%)`,
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 24 }}>
           {/* New Warrior side */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 1 220px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 240px", minWidth: 0 }}>
             <SwordsEmblem size={36} color={COLORS.gold} />
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 1.5, fontWeight: 700, marginBottom: 2 }}>NEW TO RANN?</div>
               <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 700 }}>Step into the arena</div>
             </div>
-            <Button onClick={() => onNav("register")} variant="gold" size="sm" style={{ whiteSpace: "nowrap" }}>Register →</Button>
+            <Button onClick={() => onNav("register")} variant="gold" size="sm" style={{ whiteSpace: "nowrap", marginLeft: 8 }}>Register →</Button>
           </div>
           {/* Divider */}
-          <div style={{ width: 1, height: 40, background: COLORS.borderLight }}></div>
+          <div style={{ width: 1, height: 48, background: COLORS.borderLight }}></div>
           {/* Returning Warrior side */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 1 220px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 240px", minWidth: 0 }}>
             <SwordsEmblem size={36} color={COLORS.primary} />
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 11, color: COLORS.primary, letterSpacing: 1.5, fontWeight: 700, marginBottom: 2 }}>RETURNING WARRIOR?</div>
               <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 700 }}>Welcome back</div>
             </div>
-            <Button onClick={() => onNav("login")} variant="ghost" size="sm" style={{ whiteSpace: "nowrap" }}>Login →</Button>
+            <Button onClick={() => onNav("login")} variant="ghost" size="sm" style={{ whiteSpace: "nowrap", marginLeft: 8 }}>Login →</Button>
           </div>
         </div>
       </Card>
@@ -578,7 +578,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       <div style={{ position: "absolute", right: -30, top: -30, opacity: 0.08, pointerEvents: "none" }}>
         <SwordsEmblem size={280} color={COLORS.gold} />
       </div>
-      <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
+      <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20 }}>
         <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <div style={{ color: COLORS.gold, fontSize: 12, letterSpacing: 3, fontWeight: 700, marginBottom: 12 }}>
             ◆ NEXT BATTLE · {isRegistrationOpen(event) ? "OPEN" : (event?.status === "results" ? "RESULTS LIVE" : "CLOSED")} ◆
@@ -3871,23 +3871,68 @@ export default function App() {
             <div style={{ fontSize: 22, fontFamily: "'Cinzel', serif", fontWeight: 700, letterSpacing: 4, color: COLORS.charcoal }}>RANN</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Button onClick={() => setView("home")} variant={view === "home" ? "primary" : "light"} size="sm">Home</Button>
-          <Button onClick={() => setView("leaderboard")} variant={view === "leaderboard" ? "primary" : "light"} size="sm">Leaderboard</Button>
-          {athlete ? (
-            <>
-              <Button onClick={() => setView("dashboard")} variant={view === "dashboard" ? "primary" : "light"} size="sm">My Profile</Button>
-              <Button onClick={handleLogout} variant="ghost" size="sm">Logout</Button>
-            </>
-          ) : (
-            <>
-              <Button onClick={() => setView("register")} variant="gold" size="sm">Register</Button>
-              <Button onClick={() => setView("login")} variant="ghost" size="sm">Login</Button>
-            </>
-          )}
-          {adminRevealed && (
-            <Button onClick={() => setView(isAdminAuthed ? "admin" : "admin-login")} variant="dark" size="sm">Admin</Button>
-          )}
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+          {(() => {
+            const navBtn = (label, targetView, onClick, isActive) => (
+              <button onClick={onClick} style={{
+                background: "transparent",
+                color: isActive ? COLORS.primary : COLORS.charcoal,
+                border: "none",
+                padding: "8px 14px",
+                fontSize: 13,
+                fontWeight: isActive ? 700 : 500,
+                letterSpacing: 0.5,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                position: "relative",
+                borderRadius: 4,
+                transition: "all 0.18s ease",
+              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "rgba(139, 0, 0, 0.06)"; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}>
+                {label}
+                {isActive && <div style={{ position: "absolute", bottom: -2, left: "20%", right: "20%", height: 2, background: COLORS.gold, borderRadius: 1 }} />}
+              </button>
+            );
+            return (
+              <>
+                {navBtn("Home", "home", () => setView("home"), view === "home")}
+                {navBtn("Leaderboard", "leaderboard", () => setView("leaderboard"), view === "leaderboard")}
+                {athlete ? (
+                  <>
+                    {navBtn("My Profile", "dashboard", () => setView("dashboard"), view === "dashboard")}
+                    <button onClick={handleLogout} style={{
+                      background: "transparent", color: COLORS.textGray, border: `1px solid ${COLORS.borderLight}`,
+                      padding: "7px 14px", fontSize: 12, fontWeight: 500, letterSpacing: 0.5,
+                      cursor: "pointer", fontFamily: "inherit", borderRadius: 5, marginLeft: 8,
+                    }}>Logout</button>
+                  </>
+                ) : (
+                  <>
+                    {navBtn("Login", "login", () => setView("login"), view === "login")}
+                    <button onClick={() => setView("register")} style={{
+                      background: COLORS.gold, color: COLORS.charcoal, border: "none",
+                      padding: "8px 18px", fontSize: 13, fontWeight: 700, letterSpacing: 0.8,
+                      cursor: "pointer", fontFamily: "inherit", borderRadius: 5, marginLeft: 8,
+                      boxShadow: "0 2px 6px rgba(212, 160, 23, 0.25)",
+                      transition: "all 0.18s ease",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 10px rgba(212, 160, 23, 0.35)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 6px rgba(212, 160, 23, 0.25)"; }}>
+                      Register
+                    </button>
+                  </>
+                )}
+                {adminRevealed && (
+                  <button onClick={() => setView(isAdminAuthed ? "admin" : "admin-login")} style={{
+                    background: COLORS.charcoal, color: COLORS.cream, border: "none",
+                    padding: "7px 12px", fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
+                    cursor: "pointer", fontFamily: "inherit", borderRadius: 5, marginLeft: 6,
+                  }}>Admin</button>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
 
