@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import ExcelJS from "https://esm.sh/exceljs@4.4.0";
+import QRCode from "https://esm.sh/qrcode@1.5.3";
 
 // ============================================================
 // SUPABASE CONFIGURATION
@@ -217,6 +218,31 @@ const getDeadlineInfo = (event) => {
   return { deadline, past, ms, days, hours, minutes, label, urgent: !past && ms < 24 * 60 * 60 * 1000 };
 };
 
+// Friendly event status banner: "Upcoming · 18 May", "Today", "Completed", "Results Live"
+const getEventDateStatus = (event) => {
+  if (!event) return { label: "TBA", tone: "neutral" };
+  // Manual status from admin overrides date logic
+  if (event.status === "results") return { label: "RESULTS LIVE", tone: "good" };
+  if (event.status === "completed") return { label: "COMPLETED", tone: "neutral" };
+  // Try to parse the event date string
+  const ed = event.event_date ? new Date(event.event_date) : null;
+  if (ed && !isNaN(ed.getTime())) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const eventDay = new Date(ed.getFullYear(), ed.getMonth(), ed.getDate());
+    const diffDays = Math.round((eventDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return { label: "TODAY", tone: "good" };
+    if (diffDays < 0) return { label: "COMPLETED", tone: "neutral" };
+    // Future event — show abbreviated date
+    const dayMonth = ed.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+    return { label: `UPCOMING · ${dayMonth.toUpperCase()}`, tone: "good" };
+  }
+  // Fallback to old logic
+  if (event.status === "open") return { label: "OPEN", tone: "good" };
+  if (event.status === "closed") return { label: "CLOSED", tone: "neutral" };
+  return { label: (event.status || "TBA").toUpperCase(), tone: "neutral" };
+};
+
 const formatDeadlineDisplay = (event) => {
   if (!event?.registration_deadline_at) return event?.registration_deadline || "—";
   const d = new Date(event.registration_deadline_at);
@@ -421,6 +447,20 @@ const Card = ({ children, style = {}, variant = "default" }) => {
   );
 };
 
+// UPI QR code component — generates a scannable UPI deep-link QR
+const UPIQrCode = ({ upiId, amount, name = "Rann League", size = 180 }) => {
+  const [dataUrl, setDataUrl] = useState(null);
+  useEffect(() => {
+    if (!upiId) return;
+    const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(name)}${amount ? `&am=${amount}` : ""}&cu=INR`;
+    QRCode.toDataURL(upiLink, { width: size * 2, margin: 1, color: { dark: "#1A1A1A", light: "#FFFFFF" } })
+      .then((url) => setDataUrl(url))
+      .catch(() => setDataUrl(null));
+  }, [upiId, amount, name, size]);
+  if (!dataUrl) return <div style={{ width: size, height: size, background: "#F5F5F5", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, fontSize: 11, color: COLORS.textGray }}>Generating QR...</div>;
+  return <img src={dataUrl} alt="UPI QR" width={size} height={size} style={{ display: "block", borderRadius: 8, border: `2px solid ${COLORS.gold}` }} />;
+};
+
 const Input = ({ label, value, onChange, placeholder, type = "text", required = false, helpText = "" }) => (
   <div style={{ marginBottom: 16 }}>
     {label && (
@@ -581,7 +621,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20 }}>
         <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <div style={{ color: COLORS.gold, fontSize: 12, letterSpacing: 3, fontWeight: 700, marginBottom: 12 }}>
-            ◆ NEXT BATTLE · {isRegistrationOpen(event) ? "OPEN" : (event?.status === "results" ? "RESULTS LIVE" : "CLOSED")} ◆
+            ◆ {getEventDateStatus(event).label} ◆
           </div>
           <div style={{ fontSize: "clamp(24px, 6vw, 32px)", fontWeight: 700, fontFamily: "'Cinzel', serif", letterSpacing: 0.5, marginBottom: 14, lineHeight: 1.2, wordBreak: "break-word" }}>
             {event?.event_date || "Date TBA"}
@@ -1379,9 +1419,16 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
     const confirmedCost = confirmedEvents.reduce((sum, e) => sum + (TIERS[tiers[e]]?.entry || 0), 0);
 
     // Validate: payment ref required only if anything is confirmed
-    if (confirmedEvents.length > 0 && !paymentNote.trim()) {
-      setError("Payment reference is required for confirmed slots. Please pay first, then enter the UTR/transaction ID from your UPI app.");
-      return;
+    if (confirmedEvents.length > 0) {
+      const cleanRef = (paymentNote || "").replace(/\D/g, "");
+      if (!cleanRef) {
+        setError("Payment reference is required for confirmed slots. Please pay first, then enter the UTR/transaction ID from your UPI app.");
+        return;
+      }
+      if (cleanRef.length < 6) {
+        setError("Payment reference must be at least 6 digits (last 6 digits of your UTR / transaction ID).");
+        return;
+      }
     }
     if (!waiverAccepted || !medicalOk) { setError("You must accept the waiver and medical declaration"); return; }
     if (confirmedEvents.length === 0 && waitlistEvents.length === 0) { setError("No events selected"); return; }
@@ -1528,7 +1575,34 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
               </div>
             )}
             {error && <div style={{ background: "#FDE8E8", color: COLORS.primary, padding: "10px 12px", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>{error}</div>}
-            <Button onClick={() => { const e = validateStep1(); if (e) setError(e); else { setError(""); setStep(2); } }} variant="primary" size="lg" style={{ width: "100%" }}>Next: Choose Events →</Button>
+            <Button onClick={async () => {
+              const e = validateStep1(); if (e) { setError(e); return; }
+              setError(""); setLoading(true);
+              try {
+                const cleanPhone = phone.replace(/\D/g, "");
+                const { data: existing } = await supabase.from("athletes").select("phone, name, pin_hash").eq("phone", cleanPhone).maybeSingle();
+                if (existing) {
+                  // Phone already registered — block to prevent overwrite
+                  if (existing.pin_hash) {
+                    setError(`This phone is already registered to ${existing.name}. Please log in instead, or use a different phone number.`);
+                  } else {
+                    setError(`This phone is already registered to ${existing.name}. Please log in to set your PIN, or use a different phone number.`);
+                  }
+                  setLoading(false);
+                  return;
+                }
+                setLoading(false);
+                setStep(2);
+              } catch (err) {
+                setLoading(false);
+                setError("Could not verify phone availability. Please try again.");
+              }
+            }} variant="primary" size="lg" style={{ width: "100%" }} disabled={loading}>{loading ? "Checking..." : "Next: Choose Events →"}</Button>
+            {error && error.includes("already registered") && (
+              <div style={{ marginTop: 12, textAlign: "center" }}>
+                <Button onClick={() => onNav("login")} variant="ghost" size="sm">Go to login →</Button>
+              </div>
+            )}
           </>
         )}
 
@@ -1685,13 +1759,19 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
               </div>
             ) : (
               <div style={{ background: COLORS.creamLight, padding: 16, borderRadius: 8, marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2, marginBottom: 6 }}>PAY VIA UPI</div>
-                <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 12 }}>{upiId}</div>
-                <div style={{ background: "#FFFFFF", padding: 12, borderRadius: 6, fontSize: 13, fontFamily: "monospace" }}>
-                  Amount: <span style={{ color: COLORS.primary, fontWeight: 700 }}>₹{confirmedCost}</span>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2, marginBottom: 12, textAlign: "center" }}>◆ PAY VIA UPI ◆</div>
+                <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
+                  <UPIQrCode upiId={upiId} amount={confirmedCost} size={160} />
+                  <div style={{ flex: "1 1 200px", minWidth: 0, textAlign: "center" }}>
+                    <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>SCAN OR PAY TO</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 12, wordBreak: "break-all" }}>{upiId}</div>
+                    <div style={{ background: "#FFFFFF", padding: 12, borderRadius: 6, fontSize: 14, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}` }}>
+                      Amount: <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 16 }}>₹{confirmedCost}</span>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: COLORS.textGray, marginTop: 10, lineHeight: 1.5 }}>
-                  Send ₹{confirmedCost} via any UPI app · Enter your name in the note field. We'll verify and confirm via WhatsApp within 24 hours.
+                <div style={{ fontSize: 12, color: COLORS.textGray, marginTop: 12, lineHeight: 1.5, textAlign: "center" }}>
+                  Scan the QR or send ₹{confirmedCost} to the UPI ID above. Enter your name in the note field. Slot will be confirmed once we verify the payment (typically within 15 minutes).
                 </div>
                 {waitlistEvents.length > 0 && (
                   <div style={{ fontSize: 12, color: "#7B5500", background: "#FFF4D4", padding: "8px 10px", borderRadius: 4, marginTop: 10, lineHeight: 1.5 }}>
@@ -1702,7 +1782,23 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
             )}
 
             {!allWaitlist && (
-              <Input label="Payment reference / UPI transaction ID" value={paymentNote} onChange={setPaymentNote} placeholder="Last 6 digits of UTR or transaction ID" required helpText="Required. After paying, find this in your UPI app's transaction history." />
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: COLORS.charcoal, marginBottom: 6, letterSpacing: 0.5 }}>
+                  Payment reference / UPI transaction ID <span style={{ color: COLORS.primary }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                  placeholder="Last 6 digits of UTR or transaction ID"
+                  style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, fontFamily: "inherit", background: "#FAFAF7", color: COLORS.charcoal, WebkitTextFillColor: COLORS.charcoal, boxSizing: "border-box", letterSpacing: 1 }}
+                />
+                <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 4 }}>
+                  Numbers only. After paying, find this in your UPI app's transaction history (UTR / Transaction ID).
+                </div>
+              </div>
             )}
 
             <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 16, marginTop: 8 }}>
@@ -1775,7 +1871,10 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
 
     {hasConfirmed && (
       <Card style={{ textAlign: "left", marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: "#1F7A3A", letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>◆ CONFIRMED ◆</div>
+        <div style={{ fontSize: 11, color: "#7B5500", letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>◆ PAYMENT PENDING VERIFICATION ◆</div>
+        <div style={{ background: "#FFF4D4", border: "1px solid #E8B82A", padding: "10px 12px", borderRadius: 6, fontSize: 12, color: "#7B5500", lineHeight: 1.5, marginBottom: 14 }}>
+          ⏳ Your slot will be confirmed once we verify your payment. This typically takes <strong>15 minutes</strong>. If we can't verify it, the amount will be refunded to your account. Check back here in 15 minutes — the status will update automatically.
+        </div>
         <div style={{ marginBottom: 12 }}>
           {registration?.events_selected?.map((e) => (
             <div key={e} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 14, borderBottom: `1px dashed ${COLORS.borderLight}` }}>
@@ -1785,7 +1884,7 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
           ))}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 8, fontWeight: 700 }}>
-          <span>Total to pay</span><span style={{ color: COLORS.primary }}>₹{registration?.total_cost}</span>
+          <span>Total Paid</span><span style={{ color: COLORS.primary }}>₹{registration?.total_cost}</span>
         </div>
       </Card>
     )}
@@ -3838,7 +3937,8 @@ export default function App() {
         button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         button:active:not(:disabled) { transform: scale(0.98) translateY(0); }
         button { transition: all 0.18s ease; }
-        input, textarea, select { -webkit-appearance: none; -webkit-user-select: text; user-select: text; touch-action: manipulation; color: ${COLORS.charcoal}; -webkit-text-fill-color: ${COLORS.charcoal}; background-color: #FAFAF7; color-scheme: light; }
+        input:not([type="checkbox"]):not([type="radio"]), textarea, select { -webkit-appearance: none; -webkit-user-select: text; user-select: text; touch-action: manipulation; color: ${COLORS.charcoal}; -webkit-text-fill-color: ${COLORS.charcoal}; background-color: #FAFAF7; color-scheme: light; }
+        input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; cursor: pointer; accent-color: ${COLORS.gold}; flex-shrink: 0; }
         input::placeholder, textarea::placeholder { color: #999999; opacity: 1; -webkit-text-fill-color: #999999; }
         input:focus, select:focus, textarea:focus { outline: 2px solid ${COLORS.gold}; outline-offset: 1px; border-color: ${COLORS.gold}; }
         @media (max-width: 600px) {
