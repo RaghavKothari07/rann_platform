@@ -10,8 +10,8 @@ import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 //   2. anon key     (Settings → API → Project API keys → anon public)
 // See Rann_Platform_Setup_Guide.docx for step-by-step instructions.
 // ============================================================
-const SUPABASE_URL = "https://bfmlwpwtmjbesjjmvpoq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmbWx3cHd0bWpiZXNqam12cG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NjI4NzUsImV4cCI6MjA5MzEzODg3NX0.h-8Lvl1vYiPyLatAEnjSq5edwGT9fUrZ26tbWsdw5Rk";
+const SUPABASE_URL = "YOUR_SUPABASE_URL_HERE";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY_HERE";
 
 const supabaseEnabled = SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY_HERE";
 const supabase = supabaseEnabled ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -2651,6 +2651,142 @@ const AdminLogin = ({ onLogin, onCancel }) => {
 };
 
 // ============================================================
+// IN-APP BROWSER DETECTION
+// Catches WhatsApp / Instagram / Facebook / LinkedIn webviews on iOS
+// where modern React apps frequently fail to render properly.
+// Shows a friendly "Open in Safari" prompt with a bypass button.
+// ============================================================
+const detectInAppBrowser = () => {
+  if (typeof navigator === "undefined") return null;
+  const ua = navigator.userAgent || "";
+  // Only check on iOS — Android in-app browsers are usually Chromium-based and work fine
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  if (!isIOS) return null;
+  if (/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)) return "Facebook";
+  if (/Instagram/i.test(ua)) return "Instagram";
+  if (/LinkedInApp/i.test(ua)) return "LinkedIn";
+  if (/Twitter|TwitterAndroid/i.test(ua)) return "Twitter";
+  // WhatsApp doesn't add itself to user-agent, but iOS WhatsApp uses WKWebView
+  // and usually doesn't have Safari/CriOS/FxiOS strings. Heuristic:
+  if (isIOS && !/Safari|CriOS|FxiOS|EdgiOS/i.test(ua)) return "WhatsApp or another app";
+  return null;
+};
+
+const InAppBrowserGate = ({ children }) => {
+  const [detected, setDetected] = useState(null);
+  const [bypass, setBypass] = useState(false);
+
+  useEffect(() => {
+    try {
+      // Check sessionStorage so users who hit "Try Anyway" don't see prompt again
+      if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("rann_bypass_inapp") === "1") {
+        setBypass(true);
+        return;
+      }
+    } catch (e) {}
+    setDetected(detectInAppBrowser());
+  }, []);
+
+  const handleBypass = () => {
+    try { sessionStorage.setItem("rann_bypass_inapp", "1"); } catch (e) {}
+    setBypass(true);
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      alert("Link copied! Now open Safari and paste it.");
+    } catch (e) {
+      alert("Couldn't auto-copy. Long-press the URL bar to copy it manually.");
+    }
+  };
+
+  if (bypass || !detected) return children;
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: `linear-gradient(135deg, ${COLORS.primaryDark} 0%, ${COLORS.primary} 100%)`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 20, color: COLORS.cream,
+      fontFamily: "system-ui, -apple-system, sans-serif",
+    }}>
+      <div style={{
+        maxWidth: 440, width: "100%",
+        background: COLORS.charcoal,
+        borderRadius: 16,
+        padding: "32px 24px",
+        textAlign: "center",
+        border: `2px solid ${COLORS.gold}`,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+      }}>
+        <div style={{ marginBottom: 18 }}>
+          <SwordsEmblem size={64} color={COLORS.gold} />
+        </div>
+
+        <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 3, fontWeight: 700, marginBottom: 6 }}>
+          ◆ STEP INTO RANN ◆
+        </div>
+        <div style={{ fontSize: 24, fontFamily: "'Cinzel', serif", fontWeight: 700, marginBottom: 16, letterSpacing: 1 }}>
+          One quick step
+        </div>
+
+        <div style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.92, marginBottom: 22 }}>
+          You're viewing this inside <strong>{detected}</strong>'s built-in browser, which doesn't fully support our platform.
+          <br /><br />
+          Please open in <strong style={{ color: COLORS.gold }}>Safari</strong> for the full experience.
+        </div>
+
+        <div style={{
+          background: "rgba(212, 160, 23, 0.1)",
+          border: `1px solid ${COLORS.gold}40`,
+          borderRadius: 8,
+          padding: 16, marginBottom: 18,
+          textAlign: "left",
+        }}>
+          <div style={{ fontSize: 12, color: COLORS.gold, fontWeight: 700, marginBottom: 8, letterSpacing: 1 }}>HOW TO OPEN IN SAFARI:</div>
+          <div style={{ fontSize: 13, lineHeight: 1.8, opacity: 0.9 }}>
+            <div>1. Tap the <strong>•••</strong> menu (usually bottom-right)</div>
+            <div>2. Tap <strong>"Open in Safari"</strong> or <strong>"Open in External Browser"</strong></div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 16, lineHeight: 1.5 }}>
+          Or copy the link and paste it in Safari:
+        </div>
+
+        <button onClick={copyLink} style={{
+          width: "100%", padding: "12px 20px",
+          background: COLORS.gold, color: COLORS.charcoal,
+          border: "none", borderRadius: 8,
+          fontSize: 14, fontWeight: 700, letterSpacing: 1,
+          cursor: "pointer", marginBottom: 10,
+          fontFamily: "inherit",
+        }}>
+          📋 Copy Link
+        </button>
+
+        <button onClick={handleBypass} style={{
+          width: "100%", padding: "10px 20px",
+          background: "transparent", color: COLORS.cream,
+          border: `1px solid ${COLORS.cream}40`, borderRadius: 8,
+          fontSize: 12, fontWeight: 600,
+          cursor: "pointer",
+          fontFamily: "inherit",
+          opacity: 0.7,
+        }}>
+          Continue Anyway →
+        </button>
+
+        <div style={{ fontSize: 10, opacity: 0.5, marginTop: 18, lineHeight: 1.5 }}>
+          रण • Where warriors are made
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
 // ROOT APP
 // ============================================================
 export default function App() {
@@ -2776,9 +2912,10 @@ export default function App() {
   const leaderboardPreview = useMemo(() => [...allAthletes].sort((a, b) => (b.total_points || 0) - (a.total_points || 0)).slice(0, 5), [allAthletes]);
 
   if (!supabaseEnabled) return <SetupRequired />;
-  if (!loaded) return <div style={{ textAlign: "center", padding: 80, color: COLORS.textGray }}>Loading the arena...</div>;
+  if (!loaded) return <InAppBrowserGate><div style={{ textAlign: "center", padding: 80, color: COLORS.textGray }}>Loading the arena...</div></InAppBrowserGate>;
 
   return (
+    <InAppBrowserGate>
     <div style={{
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       background: `${COLORS.creamLight}`,
@@ -2864,5 +3001,6 @@ export default function App() {
         <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8 }}>रण में उतरो।</div>
       </div>
     </div>
+    </InAppBrowserGate>
   );
 }
