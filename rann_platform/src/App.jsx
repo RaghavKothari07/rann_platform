@@ -429,7 +429,7 @@ const Input = ({ label, value, onChange, placeholder, type = "text", required = 
       </label>
     )}
     <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-      style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, fontFamily: "inherit", background: "#FAFAF7", boxSizing: "border-box" }} />
+      style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, fontFamily: "inherit", background: "#FAFAF7", color: COLORS.charcoal, WebkitTextFillColor: COLORS.charcoal, boxSizing: "border-box" }} />
     {helpText && <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 4 }}>{helpText}</div>}
   </div>
 );
@@ -3637,6 +3637,20 @@ export default function App() {
     } catch (e) {}
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  // Force light color scheme and proper viewport at the document level
+  // (some iOS in-app browsers ignore or misinterpret CSS-only directives)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const ensureMeta = (name, content) => {
+      let el = document.querySelector(`meta[name="${name}"]`);
+      if (!el) { el = document.createElement("meta"); el.setAttribute("name", name); document.head.appendChild(el); }
+      el.setAttribute("content", content);
+    };
+    ensureMeta("color-scheme", "light");
+    ensureMeta("theme-color", "#1A1A1A");
+    ensureMeta("viewport", "width=device-width, initial-scale=1.0, maximum-scale=5.0");
+  }, []);
   const [allAthletes, setAllAthletes] = useState([]);
   const [allRegistrations, setAllRegistrations] = useState([]);
   const [allResults, setAllResults] = useState([]);
@@ -3755,7 +3769,31 @@ export default function App() {
   const leaderboardPreview = useMemo(() => [...allAthletes].sort((a, b) => (b.total_points || 0) - (a.total_points || 0)).slice(0, 5), [allAthletes]);
 
   if (!supabaseEnabled) return <SetupRequired />;
-  if (!loaded) return <InAppBrowserGate><div style={{ textAlign: "center", padding: 80, color: COLORS.textGray }}>Loading the arena...</div></InAppBrowserGate>;
+  if (!loaded) return (
+    <InAppBrowserGate>
+      <div style={{
+        background: COLORS.creamLight,
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        padding: 24,
+        color: COLORS.charcoal,
+        fontFamily: "system-ui, -apple-system, sans-serif",
+      }}>
+        <SwordsEmblem size={56} color={COLORS.gold} />
+        <div style={{ marginTop: 18, fontSize: 11, color: COLORS.gold, letterSpacing: 3, fontWeight: 700 }}>◆ RANN ◆</div>
+        <div style={{ marginTop: 6, fontSize: 14, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", letterSpacing: 1 }}>Loading the arena...</div>
+        <div style={{ marginTop: 18, fontSize: 11, color: COLORS.textGray, maxWidth: 280, lineHeight: 1.5 }}>
+          Taking too long? Try opening{" "}
+          <a href="https://rann-platform.vercel.app" style={{ color: COLORS.primary, fontWeight: 600 }}>rann-platform.vercel.app</a>{" "}
+          in Safari or Chrome directly.
+        </div>
+      </div>
+    </InAppBrowserGate>
+  );
 
   return (
     <InAppBrowserGate>
@@ -3771,14 +3809,16 @@ export default function App() {
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Noto+Serif+Devanagari:wght@600;700&display=swap');
-        html, body { overflow-x: hidden; margin: 0; padding: 0; }
+        :root { color-scheme: light; }
+        html, body { overflow-x: hidden; margin: 0; padding: 0; background: ${COLORS.creamLight}; color: ${COLORS.charcoal}; }
         body { width: 100%; }
         * { box-sizing: border-box; }
         img, video, iframe { max-width: 100%; height: auto; }
         button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         button:active:not(:disabled) { transform: scale(0.98) translateY(0); }
         button { transition: all 0.18s ease; }
-        input, textarea, select { -webkit-appearance: none; -webkit-user-select: text; user-select: text; touch-action: manipulation; }
+        input, textarea, select { -webkit-appearance: none; -webkit-user-select: text; user-select: text; touch-action: manipulation; color: ${COLORS.charcoal}; -webkit-text-fill-color: ${COLORS.charcoal}; background-color: #FAFAF7; color-scheme: light; }
+        input::placeholder, textarea::placeholder { color: #999999; opacity: 1; -webkit-text-fill-color: #999999; }
         input:focus, select:focus, textarea:focus { outline: 2px solid ${COLORS.gold}; outline-offset: 1px; border-color: ${COLORS.gold}; }
         @media (max-width: 600px) {
           .rann-event-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
