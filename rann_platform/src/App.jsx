@@ -897,10 +897,10 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
           <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             padding: "12px 28px",
-            background: "#25D366", color: "#FFFFFF",
+            background: "#128C7E", color: "#FFFFFF",
             borderRadius: 8, fontSize: 14, fontWeight: 700, letterSpacing: 0.5,
             textDecoration: "none",
-            boxShadow: "0 4px 12px rgba(37, 211, 102, 0.4)",
+            boxShadow: "0 4px 12px rgba(18, 140, 126, 0.4)",
           }}>
             <span style={{ fontSize: 18 }}>💬</span>
             Join WhatsApp Community
@@ -1848,7 +1848,7 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
     <Button onClick={() => onNav("dashboard")} variant="primary" size="lg" style={{ width: "100%" }}>Go to my dashboard →</Button>
 
     {/* WhatsApp Community — high-conversion moment */}
-    <Card style={{ marginTop: 18, padding: 18, borderLeft: `4px solid #25D366`, textAlign: "left" }}>
+    <Card style={{ marginTop: 18, padding: 18, borderLeft: `4px solid #128C7E`, textAlign: "left" }}>
       <div style={{ fontSize: 12, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>◆ ONE LAST THING ◆</div>
       <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Join the Warriors' Circle</div>
       <div style={{ fontSize: 12, color: COLORS.textGray, lineHeight: 1.5, marginBottom: 12 }}>
@@ -1857,7 +1857,7 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
       <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
         display: "inline-flex", alignItems: "center", gap: 8,
         padding: "10px 18px",
-        background: "#25D366", color: "#FFFFFF",
+        background: "#128C7E", color: "#FFFFFF",
         borderRadius: 6, fontSize: 13, fontWeight: 700,
         textDecoration: "none",
       }}>
@@ -2123,14 +2123,14 @@ const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allA
         </>
       )}
 
-      <Card style={{ marginBottom: 16, padding: 14, background: COLORS.creamLight, borderLeft: `3px solid #25D366`, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <Card style={{ marginBottom: 16, padding: 14, background: COLORS.creamLight, borderLeft: `3px solid #128C7E`, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ fontSize: 22 }}>💬</div>
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.charcoal }}>Warriors' Circle on WhatsApp</div>
           <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 2 }}>Updates, tips, fellow warriors</div>
         </div>
         <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
-          padding: "8px 16px", background: "#25D366", color: "#FFFFFF",
+          padding: "8px 16px", background: "#128C7E", color: "#FFFFFF",
           borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none",
         }}>Join →</a>
       </Card>
@@ -3828,14 +3828,16 @@ export default function App() {
         <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 12 }}>
           <a href={WHATSAPP_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" style={{
             display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "6px 14px", background: "#25D366", color: "#FFFFFF",
+            padding: "6px 14px", background: "#128C7E", color: "#FFFFFF",
             borderRadius: 5, fontSize: 11, fontWeight: 700, textDecoration: "none",
           }}>
             <span style={{ fontSize: 13 }}>💬</span> WhatsApp
           </a>
           <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" style={{
             display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "6px 14px", background: COLORS.gold, color: COLORS.charcoal,
+            padding: "6px 14px",
+            background: "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)",
+            color: "#FFFFFF",
             borderRadius: 5, fontSize: 11, fontWeight: 700, textDecoration: "none",
           }}>
             <span style={{ fontSize: 13 }}>📷</span> @rann.league
