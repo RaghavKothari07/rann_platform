@@ -542,12 +542,33 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
         </div>
       </Card>
     ) : (
-      <Card style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, background: `linear-gradient(90deg, #FFFFFF 0%, ${COLORS.creamLight} 100%)` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <SwordsEmblem size={32} color={COLORS.primary} />
-          <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 600 }}>Already a warrior?</div>
+      <Card style={{
+        marginBottom: 24,
+        padding: 18,
+        background: `linear-gradient(135deg, #FFFFFF 0%, ${COLORS.creamLight} 100%)`,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
+          {/* New Warrior side */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 1 220px", minWidth: 0 }}>
+            <SwordsEmblem size={36} color={COLORS.gold} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 1.5, fontWeight: 700, marginBottom: 2 }}>NEW TO RANN?</div>
+              <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 700 }}>Step into the arena</div>
+            </div>
+            <Button onClick={() => onNav("register")} variant="gold" size="sm" style={{ whiteSpace: "nowrap" }}>Register →</Button>
+          </div>
+          {/* Divider */}
+          <div style={{ width: 1, height: 40, background: COLORS.borderLight }}></div>
+          {/* Returning Warrior side */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 1 220px", minWidth: 0 }}>
+            <SwordsEmblem size={36} color={COLORS.primary} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: COLORS.primary, letterSpacing: 1.5, fontWeight: 700, marginBottom: 2 }}>RETURNING WARRIOR?</div>
+              <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 700 }}>Welcome back</div>
+            </div>
+            <Button onClick={() => onNav("login")} variant="ghost" size="sm" style={{ whiteSpace: "nowrap" }}>Login →</Button>
+          </div>
         </div>
-        <Button onClick={() => onNav("login")} variant="ghost" size="sm">Log in with phone →</Button>
       </Card>
     )}
 
@@ -3859,7 +3880,10 @@ export default function App() {
               <Button onClick={handleLogout} variant="ghost" size="sm">Logout</Button>
             </>
           ) : (
-            <Button onClick={() => setView("login")} variant="ghost" size="sm">Login</Button>
+            <>
+              <Button onClick={() => setView("register")} variant="gold" size="sm">Register</Button>
+              <Button onClick={() => setView("login")} variant="ghost" size="sm">Login</Button>
+            </>
           )}
           {adminRevealed && (
             <Button onClick={() => setView(isAdminAuthed ? "admin" : "admin-login")} variant="dark" size="sm">Admin</Button>
