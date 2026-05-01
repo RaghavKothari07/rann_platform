@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+import ExcelJS from "https://esm.sh/exceljs@4.4.0";
 
 // ============================================================
 // SUPABASE CONFIGURATION
@@ -106,6 +107,72 @@ const verifyPin = async (pin, saltHex, expectedHashHex) => {
   return computed === expectedHashHex;
 };
 const validatePin = (pin) => /^\d{4}$/.test(pin || "");
+
+// ============================================================
+// PERSONAL BEST HELPERS
+// Old format: personal_bests = { "Push-ups": 47 }
+// New format: personal_bests = { "Push-ups": { value: 47, date: "2026-04-13", event_id: "event_001", previous_value: null, previous_date: null } }
+// Read helpers handle BOTH shapes for backward compatibility.
+// ============================================================
+const EVENT_LOWER_IS_BETTER = { "100m Sprint": true };
+const getPBValue = (pbField) => {
+  if (pbField === null || pbField === undefined || pbField === "") return null;
+  if (typeof pbField === "object") return pbField.value ?? null;
+  return pbField;
+};
+const getPBDate = (pbField) => {
+  if (pbField && typeof pbField === "object") return pbField.date || null;
+  return null;
+};
+const getPBPrevious = (pbField) => {
+  if (pbField && typeof pbField === "object") return { value: pbField.previous_value ?? null, date: pbField.previous_date || null };
+  return { value: null, date: null };
+};
+// Parse event value to a comparable number. "1:35" plank → 95 seconds; "14.2" sprint → 14.2; "47" reps → 47.
+const parseEventValue = (eventName, raw) => {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  if (eventName === "Plank" && s.includes(":")) {
+    const parts = s.split(":").map((p) => parseFloat(p));
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts[0] * 60 + parts[1];
+  }
+  const cleaned = s.replace(/[^\d.]/g, "");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? null : n;
+};
+const isNewPB = (eventName, newValueRaw, oldPBField) => {
+  const newN = parseEventValue(eventName, newValueRaw);
+  if (newN === null) return false;
+  const oldRaw = getPBValue(oldPBField);
+  const oldN = parseEventValue(eventName, oldRaw);
+  if (oldN === null) return true; // first record = always PB
+  if (EVENT_LOWER_IS_BETTER[eventName]) return newN < oldN;
+  return newN > oldN;
+};
+const formatPBDateShort = (dateStr) => {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr);
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+};
+// Compute improvement string between new and old PB values (for dashboard display)
+const computePBImprovement = (eventName, newValue, oldValue) => {
+  if (oldValue === null || oldValue === undefined) return null;
+  const newN = parseEventValue(eventName, newValue);
+  const oldN = parseEventValue(eventName, oldValue);
+  if (newN === null || oldN === null) return null;
+  const delta = newN - oldN;
+  if (EVENT_LOWER_IS_BETTER[eventName]) {
+    if (delta < 0) return `${Math.abs(delta).toFixed(1)}s faster`;
+    return null;
+  }
+  if (delta > 0) {
+    if (eventName === "Plank") return `+${delta.toFixed(1)}s`;
+    return `+${delta} more`;
+  }
+  return null;
+};
+
 
 // Warrior ID — display "RANN-0042" from numeric column.
 // Athletes 1-100 get a "Founding Warrior" badge.
@@ -1825,6 +1892,88 @@ const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allA
         </div>
       </Card>
 
+      {/* Personal Bests Section — auto-tracks each event's PB with date & previous record */}
+      <SectionHeader title="Your Personal Bests" subtitle="Records you've set in the arena" />
+      <Card style={{ marginBottom: 24, padding: 0, overflow: "hidden" }}>
+        {(() => {
+          const pbs = athlete.personal_bests || {};
+          const hasAnyPB = EVENTS.some((ev) => {
+            const v = getPBValue(pbs[ev]);
+            return v !== null && v !== undefined && v !== "";
+          });
+          if (!hasAnyPB) {
+            return (
+              <div style={{ padding: 32, textAlign: "center", background: COLORS.creamLight }}>
+                <div style={{ fontSize: 36, marginBottom: 10 }}>🏁</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.charcoal, marginBottom: 6 }}>No records yet</div>
+                <div style={{ fontSize: 12, color: COLORS.textGray, fontStyle: "italic" }}>Compete in your first event to set your personal bests.</div>
+              </div>
+            );
+          }
+          return (
+            <div>
+              {EVENTS.map((ev, i) => {
+                const pbField = pbs[ev];
+                const value = getPBValue(pbField);
+                const date = getPBDate(pbField);
+                const prev = getPBPrevious(pbField);
+                const hasPB = value !== null && value !== undefined && value !== "";
+                const improvement = hasPB && prev.value !== null ? computePBImprovement(ev, value, prev.value) : null;
+                return (
+                  <div key={ev} style={{
+                    display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                    padding: "14px 18px",
+                    borderBottom: i < EVENTS.length - 1 ? `1px solid ${COLORS.borderLight}` : "none",
+                    background: hasPB ? "#FFFFFF" : COLORS.creamLight,
+                  }}>
+                    <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.charcoal }}>{ev}</div>
+                      {hasPB && date && (
+                        <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 2 }}>
+                          Set {formatPBDateShort(date)}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ flex: "0 0 auto", textAlign: "center", minWidth: 70 }}>
+                      {hasPB ? (
+                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: 22, fontWeight: 700, color: COLORS.primary, lineHeight: 1 }}>
+                          {value}
+                          {ev === "100m Sprint" && <span style={{ fontSize: 14, opacity: 0.7 }}>s</span>}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 13, color: COLORS.textGray, fontStyle: "italic" }}>—</div>
+                      )}
+                    </div>
+                    <div style={{ flex: "1 1 140px", textAlign: "right" }}>
+                      {hasPB && improvement && (
+                        <div style={{ display: "inline-block", padding: "4px 10px", background: "#D6F0DC", color: "#1F7A3A", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>
+                          ▲ {improvement}
+                        </div>
+                      )}
+                      {hasPB && !improvement && prev.value === null && (
+                        <div style={{ display: "inline-block", padding: "4px 10px", background: COLORS.creamLight, color: COLORS.gold, borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, border: `1px solid ${COLORS.gold}40` }}>
+                          ✦ FIRST RECORD
+                        </div>
+                      )}
+                      {hasPB && prev.value !== null && (
+                        <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 4 }}>
+                          Prev: {prev.value}{prev.date ? ` · ${formatPBDateShort(prev.date)}` : ""}
+                        </div>
+                      )}
+                      {!hasPB && (
+                        <div style={{ fontSize: 11, color: COLORS.textGray, fontStyle: "italic" }}>
+                          Compete to set your first record
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </Card>
+
       {currentRegistration && (
         <>
           <SectionHeader title="Upcoming Event" subtitle="You're registered" />
@@ -2250,9 +2399,16 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
         const newTotal = (athlete.total_points || 0) + dayPoints;
         const newAttended = (athlete.events_attended || 0) + 1;
         const personalBests = athlete.personal_bests || {};
+        const eventDateStr2 = event?.event_date || new Date().toISOString().slice(0, 10);
         for (const r of results) {
-          if (r.value) {
-            if (!personalBests[r.event] || r.isPB) personalBests[r.event] = r.value;
+          const oldField = personalBests[r.event];
+          // CSV "isPB" field provided manually; if blank, auto-detect
+          const finalIsPB = r.isPB ? true : isNewPB(r.event, r.value, oldField);
+          if (finalIsPB && r.value) {
+            personalBests[r.event] = {
+              value: r.value, date: eventDateStr2, event_id: event.id,
+              previous_value: getPBValue(oldField), previous_date: getPBDate(oldField),
+            };
           }
           if (r.value && r.position === 1) {
             recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
@@ -2285,77 +2441,285 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
   };
 
   // Generate pre-filled Excel template for event-day results entry
-  const downloadResultsTemplate = () => {
+  const downloadResultsTemplate = async () => {
     try {
-      const wb = XLSX.utils.book_new();
       const phoneToWid = {};
-      for (const a of allAthletes) phoneToWid[a.phone] = formatWarriorId(a.warrior_id) || "";
+      const phoneToVerified = {};
+      const phoneToAthlete = {};
+      for (const a of allAthletes) {
+        phoneToWid[a.phone] = formatWarriorId(a.warrior_id) || "";
+        phoneToAthlete[a.phone] = a;
+      }
+      for (const r of allRegistrations) phoneToVerified[r.phone] = r.payment_status === "verified";
 
-      // Row per (athlete × event they registered for)
-      const rows = [];
+      // Build tree: event → tier → gender → batch → [rows]
+      const tree = {};
       const batchesForEvent = (allBatches || []).filter((b) => b.event_id === event?.id);
       for (const b of batchesForEvent) {
-        rows.push({
-          "Warrior ID": phoneToWid[b.phone] || "",
-          "Token": b.token,
-          "Name": b.name,
-          "Phone": b.phone,
-          "Event": b.event_name,
-          "Tier": b.tier,
-          "Gender": b.gender_category || "Mixed",
-          "Batch": b.batch_number,
-          "Position in Batch": b.position,
-          "Position (1-5)": "",
-          "Value (reps/seconds/etc)": "",
-          "Personal Best (Y/N)": "",
-        });
+        const g = b.gender_category || "Mixed";
+        if (!tree[b.event_name]) tree[b.event_name] = {};
+        if (!tree[b.event_name][b.tier]) tree[b.event_name][b.tier] = {};
+        if (!tree[b.event_name][b.tier][g]) tree[b.event_name][b.tier][g] = {};
+        if (!tree[b.event_name][b.tier][g][b.batch_number]) tree[b.event_name][b.tier][g][b.batch_number] = [];
+        tree[b.event_name][b.tier][g][b.batch_number].push(b);
       }
-      // Sort: event → tier → gender → batch → position
-      const ev_order = (e) => EVENTS.indexOf(e);
-      const tier_order = (t) => Object.keys(TIERS).indexOf(t);
-      const g_order = (g) => GENDER_CATEGORIES.indexOf(g);
-      rows.sort((a, b) => {
-        return (ev_order(a.Event) - ev_order(b.Event))
-          || (tier_order(a.Tier) - tier_order(b.Tier))
-          || (g_order(a.Gender) - g_order(b.Gender))
-          || (a.Batch - b.Batch)
-          || (a["Position in Batch"] - b["Position in Batch"]);
+
+      // Brand colors
+      const C = {
+        crimson: "FF8B0000", goldLight: "FFFCF3D9", gold: "FFD4A017",
+        charcoal: "FF1A1A1A", cream: "FFF5F1E8", creamDark: "FFEFE7D2",
+        yellow: "FFFFF4B0", white: "FFFFFFFF",
+        tier: { Bronze: "FF8B5A2B", Silver: "FF8E8E93", Gold: "FFD4A017", Platinum: "FF8B0000" },
+        tierText: { Bronze: "FFFFFFFF", Silver: "FFFFFFFF", Gold: "FF1A1A1A", Platinum: "FFFFFFFF" },
+        gender: { Men: "FF1F4E79", Women: "FFB83280", Mixed: "FF5C8A2A" },
+      };
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "Rann Platform";
+      wb.created = new Date();
+
+      const ws = wb.addWorksheet("Results Entry", {
+        views: [{ state: "frozen", ySplit: 3 }],
       });
 
-      const ws = XLSX.utils.json_to_sheet(rows);
-      // Column widths
-      ws["!cols"] = [
-        { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 13 }, { wch: 13 },
-        { wch: 10 }, { wch: 8 }, { wch: 6 }, { wch: 8 }, { wch: 12 },
-        { wch: 22 }, { wch: 10 },
+      // Column widths (10 columns: + Previous Best)
+      ws.columns = [
+        { width: 16 }, { width: 14 }, { width: 24 }, { width: 14 }, { width: 8 },
+        { width: 8 }, { width: 18 }, { width: 16 }, { width: 18 }, { width: 12 },
       ];
-      XLSX.utils.book_append_sheet(wb, ws, "Results Template");
 
-      // Instructions sheet
-      const instructions = [
-        ["RANN — Event-Day Results Template"],
-        [""],
-        ["HOW TO USE:"],
-        ["1. Print this sheet OR open on tablet/laptop at the venue"],
-        ["2. As each batch finishes, fill in the 'Position (1-5)' column"],
-        ["   1 = winner, 2 = second, 3-5 = third/fourth/fifth"],
-        ["3. Enter their actual value (e.g., 47 for 47 push-ups, 14.2 for 14.2-second sprint)"],
-        ["4. Mark 'Personal Best (Y/N)' = Y if they beat their own previous record"],
-        ["5. After event: upload this filled .xlsx in Admin → Import Results → Upload Excel"],
-        [""],
-        ["NOTES:"],
-        ["• Don't change Warrior ID, Token, Phone, or Event columns — those identify the athlete"],
-        ["• Leave Position blank for athletes who didn't show up (DNS)"],
-        ["• Platform calculates points automatically using your formula"],
+      // === Title row ===
+      const dateStr = event?.event_date || "Event Day";
+      const venue = event?.venue || "";
+      ws.mergeCells("A1:J1");
+      const titleCell = ws.getCell("A1");
+      titleCell.value = `⚔  RANN  ·  RESULTS ENTRY  ·  ${dateStr}${venue ? "  ·  " + venue : ""}  ⚔`;
+      titleCell.font = { name: "Arial", bold: true, size: 14, color: { argb: C.white } };
+      titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.charcoal } };
+      titleCell.alignment = { horizontal: "center", vertical: "middle" };
+      ws.getRow(1).height = 32;
+
+      // === Instructions row ===
+      ws.mergeCells("A2:J2");
+      const instrCell = ws.getCell("A2");
+      instrCell.value = "Fill ONLY the yellow cells: Position (1-5) for the heat winner-to-loser, and Y/N for personal best. Leave Position blank for no-shows.";
+      instrCell.font = { name: "Arial", italic: true, size: 10, color: { argb: C.charcoal } };
+      instrCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.goldLight } };
+      instrCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      ws.getRow(2).height = 30;
+
+      let r = 4;
+      const thinBorder = { style: "thin", color: { argb: "FFCCCCCC" } };
+      const allBorders = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+
+      const fillRow = (rowNum, colStart, colEnd, color) => {
+        for (let c = colStart; c <= colEnd; c++) {
+          ws.getCell(rowNum, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+        }
+      };
+
+      for (const evName of EVENTS) {
+        if (!tree[evName]) continue;
+
+        // Event band (dark with gold text)
+        ws.mergeCells(r, 1, r, 10);
+        const evCell = ws.getCell(r, 1);
+        evCell.value = `◆  ${evName.toUpperCase()}  ◆`;
+        evCell.font = { name: "Arial", bold: true, size: 14, color: { argb: C.gold } };
+        evCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.charcoal } };
+        evCell.alignment = { horizontal: "center", vertical: "middle" };
+        ws.getRow(r).height = 26;
+        r++;
+
+        for (const tierName of Object.keys(TIERS)) {
+          if (!tree[evName][tierName]) continue;
+
+          // Tier band
+          ws.mergeCells(r, 1, r, 10);
+          const tCell = ws.getCell(r, 1);
+          tCell.value = `${tierName.toUpperCase()} TIER`;
+          tCell.font = { name: "Arial", bold: true, size: 11, color: { argb: C.tierText[tierName] } };
+          tCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.tier[tierName] } };
+          tCell.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
+          ws.getRow(r).height = 22;
+          r++;
+
+          for (const gender of GENDER_CATEGORIES) {
+            if (!tree[evName][tierName][gender]) continue;
+
+            // Gender sub-band
+            ws.mergeCells(r, 1, r, 10);
+            const gCell = ws.getCell(r, 1);
+            gCell.value = `   ◆ ${gender.toUpperCase()} ◆`;
+            gCell.font = { name: "Arial", bold: true, size: 10, color: { argb: C.white } };
+            gCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.gender[gender] } };
+            gCell.alignment = { horizontal: "left", vertical: "middle", indent: 2 };
+            ws.getRow(r).height = 20;
+            r++;
+
+            const batches = tree[evName][tierName][gender];
+            const batchNums = Object.keys(batches).map(Number).sort((a, b) => a - b);
+            for (const bn of batchNums) {
+              const rows = batches[bn].sort((a, b) => a.position - b.position);
+
+              // Batch label row
+              ws.mergeCells(r, 1, r, 10);
+              const bCell = ws.getCell(r, 1);
+              bCell.value = `      Batch ${bn}  ·  Heat of ${rows.length} warrior${rows.length === 1 ? "" : "s"}`;
+              bCell.font = { name: "Arial", bold: true, italic: true, size: 10, color: { argb: C.charcoal } };
+              bCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.creamDark } };
+              bCell.alignment = { horizontal: "left", vertical: "middle", indent: 3 };
+              ws.getRow(r).height = 18;
+              r++;
+
+              // Header row (10 cols: + Previous Best)
+              const headers = ["Token", "Warrior ID", "Name", "Phone", "Batch", "Pos in Batch", "Previous Best", "Position (1-5)", "Value (reps/secs)", "PB? (Y/N)"];
+              headers.forEach((h, i) => {
+                const c = ws.getCell(r, i + 1);
+                c.value = h;
+                c.font = { name: "Arial", bold: true, size: 9, color: { argb: C.white } };
+                c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.charcoal } };
+                c.alignment = { horizontal: "center", vertical: "middle" };
+                c.border = allBorders;
+              });
+              ws.getRow(r).height = 22;
+              r++;
+
+              // Data rows
+              for (const row of rows) {
+                const phone = row.phone;
+                const verified = phoneToVerified[phone];
+                // Look up athlete's previous PB for this event
+                const ath = phoneToAthlete[phone];
+                const pbField = ath?.personal_bests?.[row.event_name];
+                const pbVal = getPBValue(pbField);
+                const pbDate = getPBDate(pbField);
+                const prevBestStr = pbVal !== null && pbVal !== undefined && pbVal !== ""
+                  ? (pbDate ? `${pbVal} · ${formatPBDateShort(pbDate)}` : `${pbVal}`)
+                  : "— first event";
+                const cells = [
+                  row.token,
+                  phoneToWid[phone] || "",
+                  row.name,
+                  phone,
+                  row.batch_number,
+                  row.position,
+                  prevBestStr,   // Previous Best (read-only, gray)
+                  "", "", "",    // yellow input cells
+                ];
+                cells.forEach((v, i) => {
+                  const c = ws.getCell(r, i + 1);
+                  c.value = v;
+                  c.border = allBorders;
+                  if (i === 0) {
+                    c.font = { name: "Consolas", size: 10, color: { argb: C.crimson }, bold: true };
+                    c.alignment = { horizontal: "center", vertical: "middle" };
+                  } else if (i === 2) {
+                    c.font = { name: "Arial", size: 10, color: { argb: C.charcoal } };
+                    c.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
+                  } else if (i === 6) {
+                    // Previous Best — gray bg, italic, smaller
+                    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEEEEEE" } };
+                    const isFirstEvent = pbVal === null || pbVal === undefined || pbVal === "";
+                    c.font = { name: "Arial", italic: isFirstEvent, size: 9, color: { argb: isFirstEvent ? "FF999999" : C.charcoal } };
+                    c.alignment = { horizontal: "center", vertical: "middle" };
+                  } else if (i === 7 || i === 8 || i === 9) {
+                    // Yellow input cells
+                    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.yellow } };
+                    c.font = { name: "Arial", bold: true, size: 10, color: { argb: C.charcoal } };
+                    c.alignment = { horizontal: "center", vertical: "middle" };
+                  } else {
+                    c.font = { name: "Arial", size: 10, color: { argb: C.charcoal } };
+                    c.alignment = { horizontal: "center", vertical: "middle" };
+                  }
+                });
+                if (!verified) {
+                  ws.getCell(r, 4).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE5E5" } };
+                  ws.getCell(r, 4).font = { name: "Arial", size: 10, color: { argb: "FF8B0000" }, italic: true };
+                }
+                ws.getRow(r).height = 20;
+                r++;
+              }
+
+              // Empty slots
+              const emptyCount = BATCH_SIZE - rows.length;
+              for (let i = 0; i < emptyCount; i++) {
+                for (let col = 1; col <= 10; col++) {
+                  const c = ws.getCell(r, col);
+                  c.value = col === 3 ? "(empty slot)" : "";
+                  c.font = { name: "Arial", italic: true, size: 9, color: { argb: "FF999999" } };
+                  c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } };
+                  c.border = allBorders;
+                  c.alignment = { horizontal: "center", vertical: "middle" };
+                }
+                ws.getRow(r).height = 18;
+                r++;
+              }
+              r++; // spacer between batches
+            }
+          }
+        }
+      }
+
+      // === Instructions sheet ===
+      const ws2 = wb.addWorksheet("Instructions");
+      ws2.columns = [{ width: 100 }];
+      const lines = [
+        { t: "⚔ RANN — Event-Day Results Entry", bold: true, size: 16, fg: C.gold, bg: C.charcoal },
+        { t: "" },
+        { t: "HOW TO USE THIS SHEET:", bold: true, size: 12, bg: C.goldLight },
+        { t: "" },
+        { t: "1. Print this workbook OR open on a tablet/laptop at the venue." },
+        { t: "2. As each batch finishes its heat, fill in the YELLOW cells only:" },
+        { t: "       • Position (1-5)  →  1 = winner, 2 = 2nd, 3-5 = 3rd / 4th / 5th in their heat" },
+        { t: "       • Value  →  actual number (e.g., 47 reps, 14.2 seconds, 1:35 plank time)" },
+        { t: "       • PB? (Y/N)  →  Y if they beat their own previous best; otherwise leave blank" },
+        { t: "" },
+        { t: "3. For no-shows: leave Position blank. Platform skips them." },
+        { t: "" },
+        { t: "4. After event: open Admin → Import Results → Upload Filled Excel. Done." },
+        { t: "" },
+        { t: "RULES:", bold: true, size: 12, bg: C.goldLight },
+        { t: "" },
+        { t: "   • DO NOT change Token, Warrior ID, Name, Phone, Batch, or Pos in Batch columns — they identify the athlete." },
+        { t: "   • Empty slots show as '(empty slot)' — leave them alone, they are ignored on upload." },
+        { t: "   • Section headers (PUSH-UPS, BRONZE TIER, MEN, etc.) are visual guides — only data rows are read." },
+        { t: "   • Phone numbers in PINK ITALIC indicate payment-pending registrations." },
+        { t: "     If they show up and pay cash at the venue, fill in their position normally." },
+        { t: "" },
+        { t: "POINTS FORMULA:", bold: true, size: 12, bg: C.goldLight },
+        { t: "" },
+        { t: "       Base: 10 just for showing up" },
+        { t: "       Position bonus: +50 (1st), +30 (2nd), +20 (3rd) within their heat" },
+        { t: "       Personal best: +25" },
+        { t: "       Tier multiplier: ×1 Bronze, ×1.5 Silver, ×2 Gold, ×3 Platinum" },
+        { t: "       All-rounder: ×1.5 if athlete competed in all 4 events that day" },
+        { t: "" },
+        { t: "रण में उतरो।", bold: true, size: 12, fg: C.crimson },
       ];
-      const wsInstr = XLSX.utils.aoa_to_sheet(instructions);
-      wsInstr["!cols"] = [{ wch: 80 }];
-      XLSX.utils.book_append_sheet(wb, wsInstr, "Instructions");
+      lines.forEach((line, i) => {
+        const c = ws2.getCell(i + 1, 1);
+        c.value = line.t;
+        c.font = { name: "Arial", bold: !!line.bold, size: line.size || 11, color: { argb: line.fg || C.charcoal } };
+        if (line.bg) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: line.bg } };
+        c.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+        ws2.getRow(i + 1).height = line.bold ? 22 : 18;
+      });
 
-      const filename = `Rann_Results_${event?.id || "event"}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      XLSX.writeFile(wb, filename);
+      // Generate buffer and trigger download
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Rann_Results_${event?.id || "event"}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (e) {
       alert("Could not generate template: " + e.message);
+      console.error(e);
     }
   };
 
@@ -2368,33 +2732,59 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       const wb = XLSX.read(buf, { type: "array" });
       const sheetName = wb.SheetNames.find((n) => n.toLowerCase().includes("result")) || wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-      if (!rows.length) throw new Error("Sheet has no rows");
+      // Read as 2D array — we walk row by row since headers repeat per batch
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (!data.length) throw new Error("Sheet has no rows");
+
+      // Reverse maps for parsing tokens like "B-PU-M-1-04"
+      const tierByLetter = {}; for (const k of Object.keys(TIER_LETTERS)) tierByLetter[TIER_LETTERS[k]] = k;
+      const eventByCode = {}; for (const k of Object.keys(EVENT_CODES)) eventByCode[EVENT_CODES[k]] = k;
+      const genderByLetter = {}; for (const k of Object.keys(GENDER_LETTERS)) genderByLetter[GENDER_LETTERS[k]] = k;
 
       // Group by phone
       const byPhone = {};
-      for (const row of rows) {
-        const phone = String(row["Phone"] || "").replace(/\D/g, "");
-        const evName = row["Event"] || "";
-        const positionRaw = row["Position (1-5)"];
-        if (!phone || !evName) continue;
-        if (positionRaw === "" || positionRaw === null || positionRaw === undefined) continue; // skip DNS
+      let validRows = 0;
+      for (const row of data) {
+        if (!row || row.length < 8) continue;
+        const tokenStr = String(row[0] || "").trim();
+        const phoneStr = String(row[3] || "").replace(/\D/g, "");
+        // Columns: 0 Token | 1 Warrior ID | 2 Name | 3 Phone | 4 Batch | 5 Pos in Batch | 6 Previous Best | 7 Position(1-5) | 8 Value | 9 PB?
+        const positionRaw = row[7];
+        // Skip section bands, headers, empty slots — they have no valid token + phone
+        if (!tokenStr) continue;
+        if (phoneStr.length !== 10) continue;
+        if (positionRaw === "" || positionRaw === null || positionRaw === undefined) continue;
+
+        // Parse token: T-EE-G-B-PP
+        const parts = tokenStr.split("-");
+        if (parts.length !== 5) continue;
+        const tier = tierByLetter[parts[0]];
+        const evName = eventByCode[parts[1]];
+        const gender = genderByLetter[parts[2]] || "Mixed";
+        if (!tier || !evName) continue;
+
         const position = parseInt(positionRaw, 10);
         if (isNaN(position) || position < 1 || position > 5) continue;
-        const isPB = String(row["Personal Best (Y/N)"] || "").trim().toLowerCase().startsWith("y");
-        if (!byPhone[phone]) byPhone[phone] = [];
-        byPhone[phone].push({
-          event: evName,
-          position,
-          value: String(row["Value (reps/seconds/etc)"] || "").trim(),
-          isPB,
-          tier: row["Tier"] || "Bronze",
-          gender_category: row["Gender"] || "Mixed",
+
+        // Manual PB override: "Y" / "N" forces; blank = auto-detect at upload time
+        const pbOverrideRaw = String(row[9] || "").trim().toLowerCase();
+        let pbOverride = null; // null = auto, true = force Y, false = force N
+        if (pbOverrideRaw.startsWith("y")) pbOverride = true;
+        else if (pbOverrideRaw.startsWith("n")) pbOverride = false;
+
+        if (!byPhone[phoneStr]) byPhone[phoneStr] = [];
+        byPhone[phoneStr].push({
+          event: evName, position,
+          value: String(row[8] || "").trim(),
+          pbOverride, tier, gender_category: gender,
         });
+        validRows++;
       }
+      if (validRows === 0) throw new Error("No valid result rows found. Make sure you filled the yellow Position cells.");
 
       let updated = 0, skipped = 0;
       const recordUpdates = {};
+      const eventDateStr = event?.event_date || new Date().toISOString().slice(0, 10);
       for (const [phone, results] of Object.entries(byPhone)) {
         const { data: regs } = await supabase.from("registrations").select("*").eq("event_id", event.id).eq("phone", phone);
         const reg = regs?.[0];
@@ -2404,14 +2794,36 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
         const tiers = reg?.tiers || {};
         for (const r of results) if (!tiers[r.event]) tiers[r.event] = r.tier || "Bronze";
 
+        // Auto-detect PB for each result (with manual override taking precedence)
+        const personalBests = athlete.personal_bests || {};
+        for (const r of results) {
+          const oldField = personalBests[r.event];
+          let isPB;
+          if (r.pbOverride !== null) {
+            isPB = r.pbOverride; // user said Y or N — respect it
+          } else {
+            isPB = isNewPB(r.event, r.value, oldField); // auto-detect
+          }
+          r.isPB = isPB; // store for points calc
+
+          // If PB, update structured personal_bests with previous-value tracking
+          if (isPB && r.value) {
+            const oldVal = getPBValue(oldField);
+            const oldDate = getPBDate(oldField);
+            personalBests[r.event] = {
+              value: r.value,
+              date: eventDateStr,
+              event_id: event.id,
+              previous_value: oldVal,
+              previous_date: oldDate,
+            };
+          }
+        }
+
         const dayPoints = calculatePoints(results, tiers);
         const newTotal = (athlete.total_points || 0) + dayPoints;
         const newAttended = (athlete.events_attended || 0) + 1;
-        const personalBests = athlete.personal_bests || {};
         for (const r of results) {
-          if (r.value) {
-            if (!personalBests[r.event] || r.isPB) personalBests[r.event] = r.value;
-          }
           if (r.value && r.position === 1) {
             recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
           }
