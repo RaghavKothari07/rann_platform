@@ -3768,16 +3768,17 @@ export default function App() {
       minHeight: "100vh",
       color: COLORS.charcoal,
       overflowX: "hidden",
-      maxWidth: "100vw",
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Noto+Serif+Devanagari:wght@600;700&display=swap');
-        html, body { overflow-x: hidden !important; max-width: 100vw; margin: 0; padding: 0; }
-        * { box-sizing: border-box; max-width: 100vw; }
-        img, video, iframe { max-width: 100% !important; height: auto; }
+        html, body { overflow-x: hidden; margin: 0; padding: 0; }
+        body { width: 100%; }
+        * { box-sizing: border-box; }
+        img, video, iframe { max-width: 100%; height: auto; }
         button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         button:active:not(:disabled) { transform: scale(0.98) translateY(0); }
         button { transition: all 0.18s ease; }
+        input, textarea, select { -webkit-appearance: none; -webkit-user-select: text; user-select: text; touch-action: manipulation; }
         input:focus, select:focus, textarea:focus { outline: 2px solid ${COLORS.gold}; outline-offset: 1px; border-color: ${COLORS.gold}; }
         @media (max-width: 600px) {
           .rann-event-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
