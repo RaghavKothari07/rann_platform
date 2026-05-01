@@ -2974,39 +2974,53 @@ const AdminLogin = ({ onLogin, onCancel }) => {
 // Shows a friendly "Open in Safari" prompt with a bypass button.
 // ============================================================
 const detectInAppBrowser = () => {
-  if (typeof navigator === "undefined") return null;
+  if (typeof navigator === "undefined" || typeof window === "undefined") return null;
   const ua = navigator.userAgent || "";
-  // Only check on iOS — Android in-app browsers are usually Chromium-based and work fine
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  if (!isIOS) return null;
+  // Honor force flags via URL
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("nogate") === "1") return null;            // skip gate entirely
+    if (params.get("forcegate") === "1") return "Forced (debug)"; // show gate even on Safari
+  } catch (e) {}
+
+  // Explicit in-app app signatures (high confidence)
   if (/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)) return "Facebook";
   if (/Instagram/i.test(ua)) return "Instagram";
   if (/LinkedInApp/i.test(ua)) return "LinkedIn";
-  if (/Twitter|TwitterAndroid/i.test(ua)) return "Twitter";
-  // WhatsApp doesn't add itself to user-agent, but iOS WhatsApp uses WKWebView
-  // and usually doesn't have Safari/CriOS/FxiOS strings. Heuristic:
-  if (isIOS && !/Safari|CriOS|FxiOS|EdgiOS/i.test(ua)) return "WhatsApp or another app";
-  return null;
+  if (/Twitter|X\/| Line\/|GSA\/|TelegramiOS/i.test(ua)) return "another app";
+
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  if (!isIOS) return null;
+
+  // Real iOS Safari has BOTH "Safari/" AND "Version/" in the UA.
+  // WhatsApp's iOS WKWebView has neither (or only one). Other in-app webviews vary.
+  const hasSafari = /Safari\//i.test(ua);
+  const hasVersion = /Version\/\d/i.test(ua);
+  // CriOS = Chrome iOS, FxiOS = Firefox iOS, EdgiOS = Edge iOS, OPiOS = Opera iOS — all OK
+  const isKnownGoodBrowser = /CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua);
+  if (isKnownGoodBrowser) return null;
+  if (hasSafari && hasVersion) return null; // real Safari
+  return "WhatsApp or another app's built-in browser";
 };
 
 const InAppBrowserGate = ({ children }) => {
-  const [detected, setDetected] = useState(null);
-  const [bypass, setBypass] = useState(false);
-
-  useEffect(() => {
+  // Detect SYNCHRONOUSLY on first render — before children try to mount.
+  // This prevents flicker and ensures the gate shows even if the underlying app crashes.
+  const [detected] = useState(() => {
     try {
-      // Check sessionStorage so users who hit "Try Anyway" don't see prompt again
       if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("rann_bypass_inapp") === "1") {
-        setBypass(true);
-        return;
+        return null; // user already bypassed in this session
       }
     } catch (e) {}
-    setDetected(detectInAppBrowser());
-  }, []);
+    return detectInAppBrowser();
+  });
+  const [bypassed, setBypassed] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "unknown";
 
   const handleBypass = () => {
     try { sessionStorage.setItem("rann_bypass_inapp", "1"); } catch (e) {}
-    setBypass(true);
+    setBypassed(true);
   };
 
   const copyLink = async () => {
@@ -3018,30 +3032,30 @@ const InAppBrowserGate = ({ children }) => {
     }
   };
 
-  if (bypass || !detected) return children;
+  if (bypassed || !detected) return children;
 
   return (
     <div style={{
       minHeight: "100vh",
-      background: `linear-gradient(135deg, ${COLORS.primaryDark} 0%, ${COLORS.primary} 100%)`,
+      background: `linear-gradient(135deg, #6B0000 0%, #8B0000 100%)`,
       display: "flex", alignItems: "center", justifyContent: "center",
-      padding: 20, color: COLORS.cream,
+      padding: 20, color: "#F5F1E8",
       fontFamily: "system-ui, -apple-system, sans-serif",
     }}>
       <div style={{
-        maxWidth: 440, width: "100%",
-        background: COLORS.charcoal,
+        maxWidth: 460, width: "100%",
+        background: "#1A1A1A",
         borderRadius: 16,
         padding: "32px 24px",
         textAlign: "center",
-        border: `2px solid ${COLORS.gold}`,
+        border: `2px solid #D4A017`,
         boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
       }}>
         <div style={{ marginBottom: 18 }}>
-          <SwordsEmblem size={64} color={COLORS.gold} />
+          <SwordsEmblem size={64} color="#D4A017" />
         </div>
 
-        <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 3, fontWeight: 700, marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: "#D4A017", letterSpacing: 3, fontWeight: 700, marginBottom: 6 }}>
           ◆ STEP INTO RANN ◆
         </div>
         <div style={{ fontSize: 24, fontFamily: "'Cinzel', serif", fontWeight: 700, marginBottom: 16, letterSpacing: 1 }}>
@@ -3049,19 +3063,19 @@ const InAppBrowserGate = ({ children }) => {
         </div>
 
         <div style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.92, marginBottom: 22 }}>
-          You're viewing this inside <strong>{detected}</strong>'s built-in browser, which doesn't fully support our platform.
+          You're viewing this inside <strong>{detected}</strong>, which doesn't fully support our platform.
           <br /><br />
-          Please open in <strong style={{ color: COLORS.gold }}>Safari</strong> for the full experience.
+          Please open in <strong style={{ color: "#D4A017" }}>Safari</strong> for the full experience.
         </div>
 
         <div style={{
           background: "rgba(212, 160, 23, 0.1)",
-          border: `1px solid ${COLORS.gold}40`,
+          border: `1px solid #D4A01740`,
           borderRadius: 8,
           padding: 16, marginBottom: 18,
           textAlign: "left",
         }}>
-          <div style={{ fontSize: 12, color: COLORS.gold, fontWeight: 700, marginBottom: 8, letterSpacing: 1 }}>HOW TO OPEN IN SAFARI:</div>
+          <div style={{ fontSize: 12, color: "#D4A017", fontWeight: 700, marginBottom: 8, letterSpacing: 1 }}>HOW TO OPEN IN SAFARI:</div>
           <div style={{ fontSize: 13, lineHeight: 1.8, opacity: 0.9 }}>
             <div>1. Tap the <strong>•••</strong> menu (usually bottom-right)</div>
             <div>2. Tap <strong>"Open in Safari"</strong> or <strong>"Open in External Browser"</strong></div>
@@ -3074,7 +3088,7 @@ const InAppBrowserGate = ({ children }) => {
 
         <button onClick={copyLink} style={{
           width: "100%", padding: "12px 20px",
-          background: COLORS.gold, color: COLORS.charcoal,
+          background: "#D4A017", color: "#1A1A1A",
           border: "none", borderRadius: 8,
           fontSize: 14, fontWeight: 700, letterSpacing: 1,
           cursor: "pointer", marginBottom: 10,
@@ -3085,8 +3099,8 @@ const InAppBrowserGate = ({ children }) => {
 
         <button onClick={handleBypass} style={{
           width: "100%", padding: "10px 20px",
-          background: "transparent", color: COLORS.cream,
-          border: `1px solid ${COLORS.cream}40`, borderRadius: 8,
+          background: "transparent", color: "#F5F1E8",
+          border: `1px solid #F5F1E840`, borderRadius: 8,
           fontSize: 12, fontWeight: 600,
           cursor: "pointer",
           fontFamily: "inherit",
@@ -3097,6 +3111,19 @@ const InAppBrowserGate = ({ children }) => {
 
         <div style={{ fontSize: 10, opacity: 0.5, marginTop: 18, lineHeight: 1.5 }}>
           रण • Where warriors are made
+        </div>
+
+        {/* Debug toggle — tap to see browser info, helps diagnose issues */}
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid rgba(245,241,232,0.1)" }}>
+          <div onClick={() => setShowDebug(!showDebug)} style={{ fontSize: 9, opacity: 0.4, cursor: "pointer", letterSpacing: 1 }}>
+            {showDebug ? "▼ HIDE DEBUG" : "▸ DEBUG INFO"}
+          </div>
+          {showDebug && (
+            <div style={{ marginTop: 8, padding: 10, background: "rgba(0,0,0,0.4)", borderRadius: 4, textAlign: "left", fontSize: 9, lineHeight: 1.4, fontFamily: "monospace", color: "#D4A017", wordBreak: "break-all" }}>
+              <div><strong>Detected:</strong> {detected}</div>
+              <div style={{ marginTop: 4 }}><strong>UA:</strong> {ua}</div>
+            </div>
+          )}
         </div>
       </div>
     </div>
