@@ -634,37 +634,31 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       </div>
       <div className="rann-tier-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
         {Object.entries(TIERS).map(([name, t], i) => (
-          <div key={name} style={{ position: "relative" }}>
+          <Card key={name} className="rann-tier-card" style={{
+            padding: 0,
+            overflow: "hidden",
+            border: name === "Gold" ? `3px solid ${COLORS.gold}` : `2px solid ${t.color}`,
+            boxShadow: name === "Gold" ? `0 4px 16px rgba(212, 160, 23, 0.25)` : "none",
+            position: "relative",
+          }}>
+            <div style={{ background: t.color, color: name === "Silver" ? "#FFFFFF" : (name === "Gold" ? COLORS.charcoal : "#FFFFFF"), padding: "14px 12px", textAlign: "center", fontFamily: "'Cinzel', serif", fontSize: 17, fontWeight: 700, letterSpacing: 2 }}>
+              {name.toUpperCase()}
+            </div>
             {name === "Gold" && (
-              <div className="rann-popular-badge" style={{
-                position: "absolute",
-                top: -8,
-                left: "50%",
-                transform: "translateX(-50%)",
+              <div style={{
                 background: COLORS.charcoal,
                 color: COLORS.gold,
                 fontSize: 9,
                 fontWeight: 700,
-                letterSpacing: 1.5,
-                padding: "3px 10px",
-                borderRadius: 3,
-                zIndex: 2,
+                letterSpacing: 2,
+                padding: "4px 0",
+                textAlign: "center",
                 whiteSpace: "nowrap",
-                boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-              }}>★ POPULAR ★</div>
+              }}>★ MOST POPULAR ★</div>
             )}
-            <Card className="rann-tier-card" style={{
-              padding: 0,
-              overflow: "hidden",
-              border: `2px solid ${t.color}`,
-              position: "relative",
-            }}>
-              <div style={{ background: t.color, color: name === "Silver" ? "#FFFFFF" : (name === "Gold" ? COLORS.charcoal : "#FFFFFF"), padding: "14px 12px", textAlign: "center", fontFamily: "'Cinzel', serif", fontSize: 17, fontWeight: 700, letterSpacing: 2 }}>
-                {name.toUpperCase()}
-              </div>
-              <div style={{ padding: 18, textAlign: "center" }}>
-                <div style={{ fontSize: 11, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>ENTRY</div>
-                <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginTop: 2, marginBottom: 12 }}>₹{t.entry}</div>
+            <div style={{ padding: 18, textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>ENTRY</div>
+              <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginTop: 2, marginBottom: 12 }}>₹{t.entry}</div>
               <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10, fontSize: 13, lineHeight: 1.8, color: COLORS.charcoal }}>
                 <div style={{ fontSize: 10, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 6 }}>◆ PRIZES ◆</div>
                 <div><span style={{ color: COLORS.gold, fontWeight: 700 }}>1st</span> · <strong>₹{t.entry * 2}</strong></div>
@@ -675,8 +669,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
                 {t.multiplier}× POINTS
               </div>
             </div>
-            </Card>
-          </div>
+          </Card>
         ))}
       </div>
     </div>
@@ -3772,7 +3765,6 @@ export default function App() {
         @media (max-width: 600px) {
           .rann-event-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
           .rann-tier-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
-          .rann-popular-badge { font-size: 8px !important; padding: 2px 8px !important; }
         }
         @media (min-width: 900px) {
           .rann-event-grid { grid-template-columns: repeat(4, 1fr) !important; }
