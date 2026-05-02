@@ -485,7 +485,7 @@ const Button = ({ children, onClick, variant = "primary", size = "md", style = {
   return <button type={type} onClick={onClick} disabled={disabled} style={{ ...base, ...sizes[size], ...variants[variant], ...style }}>{children}</button>;
 };
 
-const Card = ({ children, style = {}, variant = "default" }) => {
+const Card = ({ children, style = {}, variant = "default", className = "" }) => {
   const variants = {
     default: { background: "#FFFFFF", border: `1px solid ${COLORS.borderLight}` },
     parchment: { background: "linear-gradient(135deg, #FDF9EE 0%, #F5EDD8 100%)", border: `1px solid ${COLORS.gold}40` },
@@ -493,7 +493,7 @@ const Card = ({ children, style = {}, variant = "default" }) => {
     crimson: { background: "linear-gradient(135deg, #A00010 0%, #6B0000 100%)", border: `1px solid ${COLORS.gold}`, color: COLORS.cream },
   };
   return (
-    <div style={{
+    <div className={className} style={{
       borderRadius: 12,
       padding: 24,
       boxShadow: "0 2px 12px rgba(20, 8, 5, 0.08), 0 1px 3px rgba(20, 8, 5, 0.04)",
@@ -4455,15 +4455,23 @@ export default function App() {
           .rann-hero-cta { width: 100% !important; display: flex !important; justify-content: center !important; }
           .rann-hero-cta > button, .rann-hero-cta > div { width: 100% !important; max-width: 320px; }
 
-          /* Welcome card halves on mobile: hide decorative icon, force left text alignment, button drops below full-width */
+          /* Top nav: compact buttons so Home/Leaderboard/Profile/Logout fit on one row on mobile */
+          .rann-topnav-buttons { gap: 2px !important; flex-wrap: nowrap !important; }
+          .rann-topnav-buttons > button { padding: 6px 8px !important; font-size: 11px !important; letter-spacing: 0 !important; margin-left: 4px !important; }
+
+          /* Welcome card halves on mobile: stack as a clean column (icon hidden, text on top, button full-width below) */
           .rann-welcome-icon { display: none !important; }
-          .rann-welcome-half { flex-wrap: wrap !important; gap: 0 !important; }
-          .rann-welcome-half > div:not(.rann-welcome-cta):not(.rann-welcome-icon) { text-align: left !important; }
-          .rann-welcome-half > .rann-welcome-cta { flex: 0 0 100% !important; margin-left: 0 !important; margin-top: 12px !important; }
+          .rann-welcome-half {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+          }
+          .rann-welcome-half > div { text-align: left !important; }
+          .rann-welcome-half > .rann-welcome-cta { margin-left: 0 !important; margin-top: 4px !important; }
           .rann-welcome-half > .rann-welcome-cta > button { width: 100% !important; }
           .rann-welcome-divider { display: none !important; }
 
-          /* Welcome BACK card (logged-in) — same treatment: text on top left, button full-width below */
+          /* Welcome BACK card (logged-in) — text on top left, button full-width below */
           .rann-welcome-back > .rann-welcome-back-cta { flex: 0 0 100% !important; margin-top: 12px !important; }
           .rann-welcome-back > .rann-welcome-back-cta > button { width: 100% !important; }
 
@@ -4474,7 +4482,7 @@ export default function App() {
 
           /* Warrior profile card on mobile: stack into a clean column with a subtle divider, belt strip centered below */
           .rann-warrior-card { padding: 22px !important; }
-          .rann-warrior-card > .rann-side-by-side {
+          .rann-warrior-card .rann-side-by-side {
             flex-direction: column !important;
             flex-wrap: nowrap !important;
             align-items: stretch !important;
@@ -4501,6 +4509,8 @@ export default function App() {
           .rann-warrior-card .rann-warrior-name { font-size: 22px !important; }
           .rann-warrior-card .rann-belt-label { font-size: 20px !important; }
           .rann-warrior-card .rann-belt-medallion { width: 50px !important; height: 50px !important; font-size: 18px !important; }
+          /* Even tighter nav on very small screens */
+          .rann-topnav-buttons > button { padding: 5px 6px !important; font-size: 10px !important; }
         }
         @media (min-width: 900px) {
           .rann-event-grid { grid-template-columns: repeat(4, 1fr) !important; }
@@ -4528,7 +4538,7 @@ export default function App() {
             <div style={{ fontSize: 22, fontFamily: "'Cinzel', serif", fontWeight: 700, letterSpacing: 4, color: COLORS.charcoal }}>RANN</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="rann-topnav-buttons" style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
           {(() => {
             const navBtn = (label, targetView, onClick, isActive) => (
               <button onClick={onClick} style={{
