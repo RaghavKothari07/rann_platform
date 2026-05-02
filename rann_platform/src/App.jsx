@@ -1908,7 +1908,7 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
               border: `1px solid ${COLORS.gold}40`,
               gap: 10,
             }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream }}>{t.event_name}</div>
                 <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · {t.gender_category || "Mixed"} · Batch {t.batch_number} · Position {t.position}</div>
               </div>
@@ -2156,23 +2156,26 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
         <>
           <SectionHeader title="Your Upcoming Event" subtitle="You're registered" />
           <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.gold}` }}>
-            {/* Centered title block — status, date, venue, payment chip */}
-            <div style={{ textAlign: "center", marginBottom: 14 }}>
-              <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 1.5, marginBottom: 6 }}>
-                ◆ {getEventDateStatus(event).label} ◆
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+              <div style={{ flex: "1 1 200px", minWidth: 0, textAlign: "left" }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 1.5, marginBottom: 4 }}>
+                  ◆ {getEventDateStatus(event).label} ◆
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginBottom: 2 }}>{event?.event_date || "Date TBA"}</div>
+                <div style={{ fontSize: 13, color: COLORS.textGray }}>{event?.venue || "Venue TBA"}</div>
               </div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginBottom: 4 }}>{event?.event_date || "Date TBA"}</div>
-              <div style={{ fontSize: 13, color: COLORS.textGray, marginBottom: 12 }}>{event?.venue || "Venue TBA"}</div>
-              <div style={{ fontSize: 10, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 5 }}>PAYMENT</div>
-              <div style={{ display: "inline-block", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1, background: currentRegistration.payment_status === "verified" ? "#D6F0DC" : "#FCE7C0", color: currentRegistration.payment_status === "verified" ? "#1F7A3A" : "#7B5500" }}>
-                {currentRegistration.payment_status === "verified" ? "✓ VERIFIED" : "⏳ PENDING"}
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>PAYMENT</div>
+                <div style={{ display: "inline-block", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1, background: currentRegistration.payment_status === "verified" ? "#D6F0DC" : "#FCE7C0", color: currentRegistration.payment_status === "verified" ? "#1F7A3A" : "#7B5500" }}>
+                  {currentRegistration.payment_status === "verified" ? "✓ VERIFIED" : "⏳ PENDING"}
+                </div>
+                {currentRegistration.payment_status !== "verified" && (
+                  <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 4, fontStyle: "italic" }}>Verifying payment...</div>
+                )}
               </div>
-              {currentRegistration.payment_status !== "verified" && (
-                <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 6, fontStyle: "italic" }}>Verifying payment...</div>
-              )}
             </div>
-            <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 12 }}>
-              <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>{currentRegistration.events_selected?.length} EVENT{currentRegistration.events_selected?.length !== 1 ? "S" : ""} REGISTERED</div>
+            <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10 }}>
+              <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>{currentRegistration.events_selected?.length} EVENT{currentRegistration.events_selected?.length !== 1 ? "S" : ""} REGISTERED</div>
               {currentRegistration.events_selected?.map((e) => (
                 <div key={e} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13 }}>
                   <span>{e}</span>
@@ -2189,7 +2192,7 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
       )}
 
       {myBatchTokens && myBatchTokens.length > 0 && (
-        <Card variant="dark" style={{ marginBottom: 24, padding: 22, position: "relative", overflow: "hidden" }}>
+        <Card variant="dark" style={{ textAlign: "left", marginBottom: 24, padding: 22, position: "relative", overflow: "hidden" }}>
           <div style={{ position: "absolute", right: -20, top: -20, opacity: 0.1, pointerEvents: "none" }}>
             <SwordsEmblem size={150} color={COLORS.gold} />
           </div>
@@ -2207,7 +2210,7 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
                 border: `1px solid ${COLORS.gold}40`,
                 gap: 10,
               }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream }}>{t.event_name}</div>
                   <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · {t.gender_category || "Mixed"} · Batch {t.batch_number} · Position {t.position}</div>
                 </div>
