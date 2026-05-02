@@ -187,6 +187,28 @@ const formatWarriorId = (id) => {
 const isFoundingWarrior = (id) => id !== null && id !== undefined && Number(id) <= 100;
 
 
+// Small colored badge for gender — used on leaderboard rows.
+// Aesthetic on-brand colors: deep indigo for men, wine-rose for women.
+const renderGenderBadge = (gender, size = 18) => {
+  const v = (gender || "").toLowerCase();
+  const baseStyle = {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    width: size, height: size, borderRadius: "50%",
+    color: "#FFFFFF",
+    fontSize: Math.round(size * 0.65),
+    fontWeight: 700, lineHeight: 1, flexShrink: 0,
+    fontFamily: "system-ui, -apple-system, sans-serif",
+  };
+  if (v === "men" || v === "male" || v === "m") {
+    return <span style={{ ...baseStyle, background: "#1E3A8A" }} title="Men">♂</span>;
+  }
+  if (v === "women" || v === "female" || v === "f") {
+    return <span style={{ ...baseStyle, background: "#9D174D" }} title="Women">♀</span>;
+  }
+  return null;
+};
+
+
 // ============================================================
 // RANK MOVEMENT (▲ / ▼ / NEW indicators on the leaderboard)
 // ============================================================
@@ -625,24 +647,28 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 24 }}>
           {/* New Warrior side */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 240px", minWidth: 0 }}>
+          <div className="rann-welcome-half" style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 240px", minWidth: 0 }}>
             <SwordsEmblem size={36} color={COLORS.gold} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 1.5, fontWeight: 700, marginBottom: 2 }}>NEW TO RANN?</div>
               <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 700 }}>Step into the arena</div>
             </div>
-            <Button onClick={() => onNav("register")} variant="gold" size="sm" style={{ whiteSpace: "nowrap", marginLeft: 8 }}>Register →</Button>
+            <div className="rann-welcome-cta" style={{ marginLeft: 8 }}>
+              <Button onClick={() => onNav("register")} variant="gold" size="sm" style={{ whiteSpace: "nowrap" }}>Register →</Button>
+            </div>
           </div>
           {/* Divider */}
-          <div style={{ width: 1, height: 48, background: COLORS.borderLight }}></div>
+          <div className="rann-welcome-divider" style={{ width: 1, height: 48, background: COLORS.borderLight }}></div>
           {/* Returning Warrior side */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 240px", minWidth: 0 }}>
+          <div className="rann-welcome-half" style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 240px", minWidth: 0 }}>
             <SwordsEmblem size={36} color={COLORS.primary} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 11, color: COLORS.primary, letterSpacing: 1.5, fontWeight: 700, marginBottom: 2 }}>RETURNING WARRIOR?</div>
               <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 700 }}>Welcome back</div>
             </div>
-            <Button onClick={() => onNav("login")} variant="ghost" size="sm" style={{ whiteSpace: "nowrap", marginLeft: 8 }}>Login →</Button>
+            <div className="rann-welcome-cta" style={{ marginLeft: 8 }}>
+              <Button onClick={() => onNav("login")} variant="ghost" size="sm" style={{ whiteSpace: "nowrap" }}>Login →</Button>
+            </div>
           </div>
         </div>
       </Card>
@@ -684,7 +710,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
             })()}
           </div>
         </div>
-        <div>
+        <div className="rann-hero-cta">
           {isRegistrationOpen(event) ? (
             <Button onClick={() => onNav("register")} variant="gold" size="lg" style={{ fontSize: "clamp(13px, 4vw, 16px)", padding: "14px 20px", whiteSpace: "nowrap" }}>
               ⚔ ENTER THE ARENA →
@@ -947,18 +973,12 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
               movement.type === "down" ? <span style={{ fontSize: 11, fontWeight: 700, color: "#B33A3A" }}>▼{movement.delta}</span> :
               null
             );
-            const gIcon = (() => {
-              const v = (a.gender || "").toLowerCase();
-              if (v === "men" || v === "male" || v === "m") return <span title="Men" style={{ color: "#3B82F6", fontSize: 11, fontWeight: 700 }}>♂</span>;
-              if (v === "women" || v === "female" || v === "f") return <span title="Women" style={{ color: "#EC4899", fontSize: 11, fontWeight: 700 }}>♀</span>;
-              return null;
-            })();
             return (
             <div key={a.phone} style={{
-              padding: "16px 22px",
+              padding: "14px 18px",
               display: "flex",
               alignItems: "center",
-              gap: 16,
+              gap: 12,
               borderBottom: i < 4 ? `1px solid ${COLORS.borderLight}` : "none",
               background: i < 3 ? `linear-gradient(90deg, ${COLORS.gold}10 0%, transparent 50%)` : "transparent",
             }}>
@@ -970,15 +990,19 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
                 fontWeight: 700, fontSize: 14,
                 border: i < 3 ? `2px solid ${COLORS.charcoal}` : `1px solid ${COLORS.borderLight}`,
                 fontFamily: "'Cinzel', serif",
+                flexShrink: 0,
               }}>{rank}</div>
-              {movementEl && <div style={{ minWidth: 36, textAlign: "center" }}>{movementEl}</div>}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, fontFamily: "'Cinzel', serif", display: "flex", alignItems: "center", gap: 6 }}>
-                  {gIcon}<span>{a.name}</span>
-                </div>
+                <div style={{ fontWeight: 700, fontSize: 15, fontFamily: "'Cinzel', serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</div>
+                {(renderGenderBadge(a.gender, 16) || movementEl) && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                    {renderGenderBadge(a.gender, 16)}
+                    {movementEl}
+                  </div>
+                )}
               </div>
               <BeltBadge points={a.total_points || 0} size="sm" />
-              <div style={{ fontWeight: 700, color: COLORS.primary, fontSize: 16, minWidth: 70, textAlign: "right", fontFamily: "'Cinzel', serif" }}>{a.total_points || 0}</div>
+              <div style={{ fontWeight: 700, color: COLORS.primary, fontSize: 18, fontFamily: "'Cinzel', serif", flexShrink: 0, minWidth: 30, textAlign: "right" }}>{a.total_points || 0}</div>
             </div>
             );
           })}
@@ -2066,37 +2090,37 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
 
   return (
     <div>
-      <Card style={{ marginBottom: 24, background: belt.color, color: belt.textColor, borderColor: belt.border, padding: 32 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
-          <div>
+      <Card className="rann-warrior-card" style={{ marginBottom: 24, background: belt.color, color: belt.textColor, borderColor: belt.border, padding: 32 }}>
+        <div className="rann-side-by-side" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+          <div className="rann-side-left">
             <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.8, fontWeight: 700, marginBottom: 4 }}>WARRIOR PROFILE</div>
-            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "'Cinzel', serif", marginBottom: 4 }}>{athlete.name}</div>
+            <div className="rann-warrior-name" style={{ fontSize: 28, fontWeight: 700, fontFamily: "'Cinzel', serif", marginBottom: 4, wordBreak: "break-word" }}>{athlete.name}</div>
             {formatWarriorId(athlete.warrior_id) && (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <div style={{ fontFamily: "'Cinzel', serif", fontSize: 14, fontWeight: 700, letterSpacing: 2, padding: "3px 10px", background: "rgba(0,0,0,0.18)", borderRadius: 3, border: `1px solid ${belt.textColor}30` }}>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <div style={{ fontFamily: "'Cinzel', serif", fontSize: 13, fontWeight: 700, letterSpacing: 1.5, padding: "3px 10px", background: "rgba(0,0,0,0.18)", borderRadius: 3, border: `1px solid ${belt.textColor}30` }}>
                   {formatWarriorId(athlete.warrior_id)}
                 </div>
                 {isFoundingWarrior(athlete.warrior_id) && (
-                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: "3px 8px", background: COLORS.gold, color: COLORS.charcoal, borderRadius: 3 }}>✦ FOUNDING</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: "3px 8px", background: COLORS.gold, color: COLORS.charcoal, borderRadius: 3, whiteSpace: "nowrap" }}>✦ FOUNDING</span>
                 )}
               </div>
             )}
             <div style={{ fontSize: 13, opacity: 0.85 }}>{formatPhone(athlete.phone)} · Joined {athlete.join_date ? new Date(athlete.join_date).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "—"}</div>
           </div>
-          <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+          <div className="rann-side-right" style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
             <div>
-              <div style={{ fontSize: 12, letterSpacing: 1, opacity: 0.7, fontWeight: 600 }}>CURRENT BELT</div>
-              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "'Cinzel', serif" }}>{belt.name}</div>
+              <div style={{ fontSize: 11, letterSpacing: 1, opacity: 0.7, fontWeight: 600 }}>CURRENT BELT</div>
+              <div className="rann-belt-label" style={{ fontSize: 26, fontWeight: 700, fontFamily: "'Cinzel', serif" }}>{belt.name}</div>
             </div>
             {/* Belt medallion — colored circle with belt rank number */}
-            <div style={{
-              width: 68, height: 68, borderRadius: "50%",
+            <div className="rann-belt-medallion" style={{
+              width: 64, height: 64, borderRadius: "50%",
               background: belt.color,
               border: `3px solid ${COLORS.gold}`,
               display: "flex", alignItems: "center", justifyContent: "center",
               color: belt.textColor,
               fontFamily: "'Cinzel', serif",
-              fontSize: 24, fontWeight: 700,
+              fontSize: 22, fontWeight: 700,
               boxShadow: "0 4px 12px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
               flexShrink: 0,
               lineHeight: 1,
@@ -2228,21 +2252,21 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
         <>
           <SectionHeader title="Your Upcoming Event" subtitle="You're registered" />
           <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.gold}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
-              <div style={{ flex: "1 1 200px", minWidth: 0, textAlign: "left" }}>
+            <div className="rann-side-by-side" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+              <div className="rann-side-left" style={{ flex: "1 1 200px", minWidth: 0, textAlign: "left" }}>
                 <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 1.5, marginBottom: 4 }}>
                   ◆ {getEventDateStatus(event).label} ◆
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginBottom: 2 }}>{event?.event_date || "Date TBA"}</div>
+                <div style={{ fontSize: "clamp(15px, 4.2vw, 18px)", fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginBottom: 2, lineHeight: 1.25 }}>{event?.event_date || "Date TBA"}</div>
                 <div style={{ fontSize: 13, color: COLORS.textGray }}>{event?.venue || "Venue TBA"}</div>
               </div>
-              <div style={{ textAlign: "right" }}>
+              <div className="rann-side-right" style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 10, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>PAYMENT</div>
-                <div style={{ display: "inline-block", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1, background: currentRegistration.payment_status === "verified" ? "#D6F0DC" : "#FCE7C0", color: currentRegistration.payment_status === "verified" ? "#1F7A3A" : "#7B5500" }}>
+                <div style={{ display: "inline-block", padding: "4px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1, background: currentRegistration.payment_status === "verified" ? "#D6F0DC" : "#FCE7C0", color: currentRegistration.payment_status === "verified" ? "#1F7A3A" : "#7B5500", whiteSpace: "nowrap" }}>
                   {currentRegistration.payment_status === "verified" ? "✓ VERIFIED" : "⏳ PENDING"}
                 </div>
                 {currentRegistration.payment_status !== "verified" && (
-                  <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 4, fontStyle: "italic" }}>Verifying payment...</div>
+                  <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 4, fontStyle: "italic" }}>Verifying...</div>
                 )}
               </div>
             </div>
@@ -2383,10 +2407,13 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
     return ranked.filter((a) => (a.gender || "").toLowerCase() === genderFilter.toLowerCase());
   }, [allAthletes, genderFilter]);
 
-  // ─── Per-event leaderboard (sort by PB, top 10) ────────────
+  // ─── Per-event leaderboard (sort by PB, top 10, respects shared genderFilter) ──
   const eventLeaderboard = useMemo(() => {
     const lowerIsBetter = !!EVENT_LOWER_IS_BETTER[eventFilter];
-    const withPB = allAthletes
+    const filteredAthletes = genderFilter === "All"
+      ? allAthletes
+      : allAthletes.filter((a) => (a.gender || "").toLowerCase() === genderFilter.toLowerCase());
+    const withPB = filteredAthletes
       .map((a) => {
         const pbField = a.personal_bests?.[eventFilter];
         const raw = getPBValue(pbField);
@@ -2399,7 +2426,7 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
       .filter(Boolean);
     withPB.sort((x, y) => lowerIsBetter ? x.numeric - y.numeric : y.numeric - x.numeric);
     return withPB.slice(0, 10);
-  }, [allAthletes, eventFilter]);
+  }, [allAthletes, eventFilter, genderFilter]);
 
   const currentEventRecord = eventRecords.find((r) => r.event_name === eventFilter);
 
@@ -2417,14 +2444,6 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
     if (m.type === "up") return <span style={{ fontSize: 12, fontWeight: 700, color: "#1F7A3A" }}>▲ {m.delta}</span>;
     if (m.type === "down") return <span style={{ fontSize: 12, fontWeight: 700, color: "#B33A3A" }}>▼ {m.delta}</span>;
     return <span style={{ fontSize: 14, color: COLORS.textGray, opacity: 0.5 }}>—</span>;
-  };
-
-  // ─── Gender icon (compact) ──────────────────────────────────
-  const genderIcon = (g) => {
-    const v = (g || "").toLowerCase();
-    if (v === "men" || v === "male" || v === "m") return <span title="Men" style={{ color: "#3B82F6", fontSize: 12, fontWeight: 700 }}>♂</span>;
-    if (v === "women" || v === "female" || v === "f") return <span title="Women" style={{ color: "#EC4899", fontSize: 12, fontWeight: 700 }}>♀</span>;
-    return <span style={{ color: COLORS.textGray, fontSize: 11, opacity: 0.5 }}>•</span>;
   };
 
   return (
@@ -2507,17 +2526,21 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                             <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: rank <= 3 ? COLORS.gold : "transparent", color: rank <= 3 ? COLORS.charcoal : COLORS.charcoal, fontWeight: 700, fontSize: 12 }}>{rank}</span>
                           </td>
                           <td style={{ padding: "12px 6px", textAlign: "center" }}>{renderMovement(rank, a.previous_rank)}</td>
-                          <td style={{ padding: 12, fontSize: 14 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              {genderIcon(a.gender)}
-                              <span>{a.name}</span>
-                              {isMe && <span style={{ fontSize: 10, color: COLORS.primary, fontWeight: 700, background: `${COLORS.primary}15`, padding: "1px 6px", borderRadius: 3, letterSpacing: 1 }}>YOU</span>}
-                            </div>
-                            {formatWarriorId(a.warrior_id) && (
-                              <div style={{ fontSize: 10, color: COLORS.textGray, fontFamily: "'Cinzel', monospace", letterSpacing: 1, marginTop: 2 }}>
-                                {formatWarriorId(a.warrior_id)}{isFoundingWarrior(a.warrior_id) ? " ✦" : ""}
+                          <td style={{ padding: 12, fontSize: 14, textAlign: "left" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                              <div style={{ paddingTop: 2, flexShrink: 0 }}>{renderGenderBadge(a.gender, 18)}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  <span>{a.name}</span>
+                                  {isMe && <span style={{ fontSize: 10, color: COLORS.primary, fontWeight: 700, background: `${COLORS.primary}15`, padding: "1px 6px", borderRadius: 3, letterSpacing: 1 }}>YOU</span>}
+                                </div>
+                                {formatWarriorId(a.warrior_id) && (
+                                  <div style={{ fontSize: 10, color: COLORS.textGray, fontFamily: "'Cinzel', monospace", letterSpacing: 1, marginTop: 3 }}>
+                                    {formatWarriorId(a.warrior_id)}{isFoundingWarrior(a.warrior_id) ? " ✦" : ""}
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            </div>
                           </td>
                           <td style={{ padding: 12, textAlign: "center" }}><BeltBadge points={a.total_points || 0} size="sm" /></td>
                           <td style={{ padding: 12, textAlign: "center", fontSize: 14 }}>{a.events_attended || 0}</td>
@@ -2537,7 +2560,7 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
       {tab === "by_event" && (
         <>
           {/* Event picker chips */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, alignSelf: "center", marginRight: 4 }}>EVENT:</span>
             {EVENTS.map((ev) => (
               <button key={ev} onClick={() => setEventFilter(ev)} style={{
@@ -2547,6 +2570,24 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                 color: eventFilter === ev ? COLORS.cream : COLORS.charcoal,
                 cursor: "pointer", letterSpacing: 0.5,
               }}>{ev}</button>
+            ))}
+          </div>
+
+          {/* Gender filter chips (shared state with Overall tab) */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, alignSelf: "center", marginRight: 4 }}>FILTER:</span>
+            {["All", "Men", "Women"].map((g) => (
+              <button key={g} onClick={() => setGenderFilter(g)} style={{
+                padding: "6px 14px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                border: `1px solid ${genderFilter === g ? COLORS.charcoal : COLORS.borderLight}`,
+                background: genderFilter === g ? COLORS.charcoal : "#FFFFFF",
+                color: genderFilter === g ? COLORS.cream : COLORS.charcoal,
+                cursor: "pointer", letterSpacing: 0.5,
+              }}>
+                {g === "Men" && <span style={{ marginRight: 4 }}>♂</span>}
+                {g === "Women" && <span style={{ marginRight: 4 }}>♀</span>}
+                {g}
+              </button>
             ))}
           </div>
 
@@ -2572,7 +2613,7 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
           {/* Top 10 by PB */}
           {eventLeaderboard.length === 0 ? (
             <Card style={{ textAlign: "center", padding: 48, color: COLORS.textGray, fontStyle: "italic" }}>
-              No personal bests recorded for {eventFilter} yet.
+              No personal bests recorded for {eventFilter}{genderFilter !== "All" ? ` in ${genderFilter}` : ""} yet.
             </Card>
           ) : (
             <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -2593,21 +2634,21 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                     borderBottom: i === eventLeaderboard.length - 1 ? "none" : `1px solid ${COLORS.borderLight}`,
                     fontWeight: isMe ? 700 : 400,
                   }}>
-                    <div style={{ width: 32, textAlign: "center" }}>
+                    <div style={{ width: 32, textAlign: "center", flexShrink: 0 }}>
                       <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: i < 3 ? COLORS.gold : "transparent", fontWeight: 700, fontSize: 12 }}>{i + 1}</span>
                     </div>
+                    <div style={{ flexShrink: 0 }}>{renderGenderBadge(a.gender, 18)}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        {genderIcon(a.gender)}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 14 }}>{a.name}</span>
                         {isHolder && <span title="Record holder" style={{ fontSize: 12 }}>👑</span>}
                         {isMe && <span style={{ fontSize: 10, color: COLORS.primary, fontWeight: 700, background: `${COLORS.primary}15`, padding: "1px 6px", borderRadius: 3, letterSpacing: 1 }}>YOU</span>}
                       </div>
-                      <div style={{ fontSize: 10, color: COLORS.textGray, fontFamily: "'Cinzel', monospace", letterSpacing: 1, marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: COLORS.textGray, fontFamily: "'Cinzel', monospace", letterSpacing: 1, marginTop: 3 }}>
                         {formatWarriorId(a.warrior_id)}{entry.date ? ` · ${entry.date}` : ""}
                       </div>
                     </div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif" }}>{entry.raw}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", flexShrink: 0 }}>{entry.raw}</div>
                   </div>
                 );
               })}
@@ -4408,9 +4449,30 @@ export default function App() {
         @media (max-width: 600px) {
           .rann-event-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
           .rann-tier-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+          /* Hero "ENTER THE ARENA" button: when its container wraps to its own row, stretch it full-width and center the button */
+          .rann-hero-cta { width: 100% !important; display: flex !important; justify-content: center !important; }
+          .rann-hero-cta > button, .rann-hero-cta > div { width: 100% !important; max-width: 320px; }
+          /* Welcome card: each half stacks (icon+text on row 1, button below full-width) */
+          .rann-welcome-half { flex-wrap: wrap !important; }
+          .rann-welcome-half > .rann-welcome-cta { flex: 0 0 100% !important; margin-left: 0 !important; margin-top: 10px !important; }
+          .rann-welcome-half > .rann-welcome-cta > button { width: 100% !important; }
+          /* Hide vertical divider between welcome halves on mobile (it floats awkwardly) */
+          .rann-welcome-divider { display: none !important; }
+          /* Cards that should stay side-by-side on mobile (warrior profile, upcoming event) */
+          .rann-side-by-side { flex-wrap: nowrap !important; }
+          .rann-side-by-side > .rann-side-left { min-width: 0 !important; flex: 1 1 0 !important; }
+          .rann-side-by-side > .rann-side-right { flex-shrink: 0 !important; }
+          /* Warrior profile card on mobile: shrink padding + name + medallion to keep things side-by-side */
+          .rann-warrior-card { padding: 20px !important; }
+          .rann-warrior-card .rann-warrior-name { font-size: 22px !important; }
+          .rann-warrior-card .rann-belt-label { font-size: 22px !important; }
+          .rann-warrior-card .rann-belt-medallion { width: 54px !important; height: 54px !important; font-size: 20px !important; }
         }
         @media (max-width: 480px) {
           .rann-belt-grid { grid-template-columns: 1fr !important; }
+          .rann-warrior-card .rann-warrior-name { font-size: 19px !important; }
+          .rann-warrior-card .rann-belt-label { font-size: 18px !important; }
+          .rann-warrior-card .rann-belt-medallion { width: 48px !important; height: 48px !important; font-size: 17px !important; }
         }
         @media (min-width: 900px) {
           .rann-event-grid { grid-template-columns: repeat(4, 1fr) !important; }
