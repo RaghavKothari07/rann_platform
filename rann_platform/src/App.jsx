@@ -2028,7 +2028,11 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
             )}
             <div style={{ fontSize: 13, opacity: 0.85 }}>{formatPhone(athlete.phone)} · Joined {athlete.join_date ? new Date(athlete.join_date).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "—"}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 12, letterSpacing: 1, opacity: 0.7, fontWeight: 600 }}>CURRENT BELT</div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "'Cinzel', serif" }}>{belt.name}</div>
+            </div>
             {/* Belt medallion — colored circle with belt rank number */}
             <div style={{
               width: 68, height: 68, borderRadius: "50%",
@@ -2043,10 +2047,6 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
               lineHeight: 1,
             }}>
               {BELTS.findIndex((b) => b.name === belt.name) + 1}
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12, letterSpacing: 1, opacity: 0.7, fontWeight: 600 }}>CURRENT BELT</div>
-              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "'Cinzel', serif" }}>{belt.name}</div>
             </div>
           </div>
         </div>
