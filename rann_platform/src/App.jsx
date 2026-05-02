@@ -1993,7 +1993,7 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
 // ============================================================
 // DASHBOARD
 // ============================================================
-const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allAthletes, myBatchTokens = [], myWaitlist = [] }) => {
+const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNav, allAthletes, myBatchTokens = [], myWaitlist = [] }) => {
   const points = athlete.total_points || 0;
   const belt = getBelt(points);
   const nextBelt = getNextBelt(points);
@@ -2148,24 +2148,38 @@ const DashboardPage = ({ athlete, currentRegistration, eventResults, onNav, allA
 
       {currentRegistration && (
         <>
-          <SectionHeader title="Upcoming Event" subtitle="You're registered" />
+          <SectionHeader title="Your Upcoming Event" subtitle="You're registered" />
           <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.gold}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, color: COLORS.textGray, fontWeight: 600 }}>EVENT #{currentRegistration.event_id?.replace("event_", "")}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>{currentRegistration.events_selected?.length} event{currentRegistration.events_selected?.length !== 1 ? "s" : ""} · ₹{currentRegistration.total_cost}</div>
+              <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 1.5, marginBottom: 4 }}>
+                  ◆ {getEventDateStatus(event).label} ◆
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginBottom: 2 }}>{event?.event_date || "Date TBA"}</div>
+                <div style={{ fontSize: 13, color: COLORS.textGray }}>{event?.venue || "Venue TBA"}</div>
               </div>
-              <div style={{ padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1, background: currentRegistration.payment_status === "verified" ? "#D6F0DC" : "#FCE7C0", color: currentRegistration.payment_status === "verified" ? "#1F7A3A" : "#7B5500" }}>
-                {currentRegistration.payment_status?.toUpperCase()}
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>PAYMENT</div>
+                <div style={{ display: "inline-block", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1, background: currentRegistration.payment_status === "verified" ? "#D6F0DC" : "#FCE7C0", color: currentRegistration.payment_status === "verified" ? "#1F7A3A" : "#7B5500" }}>
+                  {currentRegistration.payment_status === "verified" ? "✓ VERIFIED" : "⏳ PENDING"}
+                </div>
+                {currentRegistration.payment_status !== "verified" && (
+                  <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 4, fontStyle: "italic" }}>Verifying payment...</div>
+                )}
               </div>
             </div>
             <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10 }}>
+              <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>{currentRegistration.events_selected?.length} EVENT{currentRegistration.events_selected?.length !== 1 ? "S" : ""} REGISTERED</div>
               {currentRegistration.events_selected?.map((e) => (
                 <div key={e} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13 }}>
                   <span>{e}</span>
                   <span style={{ fontWeight: 600, color: TIERS[currentRegistration.tiers?.[e]]?.color }}>{currentRegistration.tiers?.[e]}</span>
                 </div>
               ))}
+              <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, marginTop: 6, borderTop: `1px dashed ${COLORS.borderLight}`, fontWeight: 700, fontSize: 13 }}>
+                <span>Total Paid</span>
+                <span style={{ color: COLORS.primary }}>₹{currentRegistration.total_cost}</span>
+              </div>
             </div>
           </Card>
         </>
@@ -4045,7 +4059,7 @@ export default function App() {
         {view === "login" && <LoginPage onLogin={handleLogin} onNav={setView} />}
         {view === "forgot-pin" && <ForgotPinPage onLogin={handleLogin} onNav={setView} />}
         {view === "success" && <SuccessPage athlete={athlete} registration={lastRegistration} waitlistEntries={lastWaitlistEntries} batchTokens={lastBatchTokens} onNav={setView} upiId={upiId} />}
-        {view === "dashboard" && athlete && <DashboardPage athlete={athlete} currentRegistration={myCurrentRegistration} eventResults={eventResults} onNav={setView} allAthletes={allAthletes} myBatchTokens={(allBatches || []).filter((b) => b.phone === athlete.phone && b.event_id === event?.id)} myWaitlist={(allWaitlist || []).filter((w) => w.phone === athlete.phone && w.event_id === event?.id && !w.promoted)} />}
+        {view === "dashboard" && athlete && <DashboardPage athlete={athlete} event={event} currentRegistration={myCurrentRegistration} eventResults={eventResults} onNav={setView} allAthletes={allAthletes} myBatchTokens={(allBatches || []).filter((b) => b.phone === athlete.phone && b.event_id === event?.id)} myWaitlist={(allWaitlist || []).filter((w) => w.phone === athlete.phone && w.event_id === event?.id && !w.promoted)} />}
         {view === "leaderboard" && <LeaderboardPage allAthletes={allAthletes} eventRecords={eventRecords} onNav={setView} currentAthletePhone={athlete?.phone} />}
         {view === "admin-login" && <AdminLogin onLogin={() => { setIsAdminAuthed(true); setView("admin"); }} onCancel={() => setView("home")} />}
         {view === "admin" && isAdminAuthed && <AdminPanel onLogout={() => { setIsAdminAuthed(false); setView("home"); }} refreshData={refreshData} allAthletes={allAthletes} allRegistrations={allRegistrations} allResults={allResults} event={event} upiId={upiId} slotCounts={slotCounts} allWaitlist={allWaitlist} allBatches={allBatches} />}
