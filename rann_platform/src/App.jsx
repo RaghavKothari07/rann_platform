@@ -187,6 +187,42 @@ const formatWarriorId = (id) => {
 const isFoundingWarrior = (id) => id !== null && id !== undefined && Number(id) <= 100;
 
 
+// ============================================================
+// RANK MOVEMENT (▲ / ▼ / NEW indicators on the leaderboard)
+// ============================================================
+
+// Standard sort used everywhere — ties broken by events_attended
+const sortAthletesByStanding = (athletes) =>
+  [...athletes].sort((a, b) => {
+    if ((b.total_points || 0) !== (a.total_points || 0)) return (b.total_points || 0) - (a.total_points || 0);
+    return (b.events_attended || 0) - (a.events_attended || 0);
+  });
+
+// Returns rank movement vs previous standings:
+//   { type: "up"|"down"|"same"|"new", delta?: number }
+const getRankMovement = (currentRank, previousRank) => {
+  if (previousRank === null || previousRank === undefined) return { type: "new" };
+  if (currentRank < previousRank) return { type: "up", delta: previousRank - currentRank };
+  if (currentRank > previousRank) return { type: "down", delta: currentRank - previousRank };
+  return { type: "same" };
+};
+
+// Snapshot — call BEFORE importing new event results so we capture
+// the "before" ranks. Returns once all rows are updated.
+const snapshotAthleteRanks = async (allAthletes) => {
+  const sorted = sortAthletesByStanding(allAthletes);
+  const now = new Date().toISOString();
+  // Parallel updates — fine for current scale (<200 athletes).
+  // If we ever cross ~500, switch to a single bulk RPC.
+  await Promise.all(sorted.map((a, i) =>
+    supabase.from("athletes").update({
+      previous_rank: i + 1,
+      previous_rank_at: now,
+    }).eq("phone", a.phone)
+  ));
+};
+
+
 // Registration deadline helpers
 const isRegistrationOpen = (event) => {
   if (!event) return false;
@@ -902,7 +938,22 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       </div>
       {leaderboardPreview && leaderboardPreview.length > 0 ? (
         <Card style={{ padding: 0, overflow: "hidden" }}>
-          {leaderboardPreview.slice(0, 5).map((a, i) => (
+          {leaderboardPreview.slice(0, 5).map((a, i) => {
+            const rank = i + 1;
+            const movement = getRankMovement(rank, a.previous_rank);
+            const movementEl = (
+              movement.type === "new" ? <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1, padding: "1px 5px", background: COLORS.gold, color: COLORS.charcoal, borderRadius: 3 }}>NEW</span> :
+              movement.type === "up" ? <span style={{ fontSize: 11, fontWeight: 700, color: "#1F7A3A" }}>▲{movement.delta}</span> :
+              movement.type === "down" ? <span style={{ fontSize: 11, fontWeight: 700, color: "#B33A3A" }}>▼{movement.delta}</span> :
+              null
+            );
+            const gIcon = (() => {
+              const v = (a.gender || "").toLowerCase();
+              if (v === "men" || v === "male" || v === "m") return <span title="Men" style={{ color: "#3B82F6", fontSize: 11, fontWeight: 700 }}>♂</span>;
+              if (v === "women" || v === "female" || v === "f") return <span title="Women" style={{ color: "#EC4899", fontSize: 11, fontWeight: 700 }}>♀</span>;
+              return null;
+            })();
+            return (
             <div key={a.phone} style={{
               padding: "16px 22px",
               display: "flex",
@@ -919,14 +970,18 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
                 fontWeight: 700, fontSize: 14,
                 border: i < 3 ? `2px solid ${COLORS.charcoal}` : `1px solid ${COLORS.borderLight}`,
                 fontFamily: "'Cinzel', serif",
-              }}>{i + 1}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, fontFamily: "'Cinzel', serif" }}>{a.name}</div>
+              }}>{rank}</div>
+              {movementEl && <div style={{ minWidth: 36, textAlign: "center" }}>{movementEl}</div>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, fontFamily: "'Cinzel', serif", display: "flex", alignItems: "center", gap: 6 }}>
+                  {gIcon}<span>{a.name}</span>
+                </div>
               </div>
               <BeltBadge points={a.total_points || 0} size="sm" />
               <div style={{ fontWeight: 700, color: COLORS.primary, fontSize: 16, minWidth: 70, textAlign: "right", fontFamily: "'Cinzel', serif" }}>{a.total_points || 0}</div>
             </div>
-          ))}
+            );
+          })}
         </Card>
       ) : (
         <Card variant="parchment" style={{ textAlign: "center", padding: 40 }}>
@@ -2308,59 +2363,261 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
 // LEADERBOARD
 // ============================================================
 const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone }) => {
-  const [view, setView] = useState("overall");
-  const sorted = useMemo(() => [...allAthletes].sort((a, b) => (b.total_points || 0) - (a.total_points || 0)), [allAthletes]);
+  const [tab, setTab] = useState("overall");
+  const [genderFilter, setGenderFilter] = useState("All");
+  const [eventFilter, setEventFilter] = useState(EVENTS[0]);
+
+  // ─── Stat banner figures ───────────────────────────────────
+  const stats = useMemo(() => {
+    const total = allAthletes.length;
+    const active = allAthletes.filter((a) => (a.events_attended || 0) > 0).length;
+    const founders = allAthletes.filter((a) => isFoundingWarrior(a.warrior_id)).length;
+    const records = eventRecords.length;
+    return { total, active, founders, records };
+  }, [allAthletes, eventRecords]);
+
+  // ─── Overall sorted list (apply gender filter) ─────────────
+  const overallSorted = useMemo(() => {
+    const ranked = sortAthletesByStanding(allAthletes).map((a, i) => ({ ...a, _rank: i + 1 }));
+    if (genderFilter === "All") return ranked;
+    return ranked.filter((a) => (a.gender || "").toLowerCase() === genderFilter.toLowerCase());
+  }, [allAthletes, genderFilter]);
+
+  // ─── Per-event leaderboard (sort by PB, top 10) ────────────
+  const eventLeaderboard = useMemo(() => {
+    const lowerIsBetter = !!EVENT_LOWER_IS_BETTER[eventFilter];
+    const withPB = allAthletes
+      .map((a) => {
+        const pbField = a.personal_bests?.[eventFilter];
+        const raw = getPBValue(pbField);
+        const date = getPBDate(pbField);
+        if (raw === null || raw === undefined || raw === "") return null;
+        const numeric = parseEventValue(eventFilter, raw);
+        if (numeric === null || isNaN(numeric)) return null;
+        return { athlete: a, raw, date, numeric };
+      })
+      .filter(Boolean);
+    withPB.sort((x, y) => lowerIsBetter ? x.numeric - y.numeric : y.numeric - x.numeric);
+    return withPB.slice(0, 10);
+  }, [allAthletes, eventFilter]);
+
+  const currentEventRecord = eventRecords.find((r) => r.event_name === eventFilter);
+
+  // ─── Wall of Warriors (founders only, sorted by warrior_id) ──
+  const founders = useMemo(() => {
+    return allAthletes
+      .filter((a) => isFoundingWarrior(a.warrior_id))
+      .sort((a, b) => (a.warrior_id || 0) - (b.warrior_id || 0));
+  }, [allAthletes]);
+
+  // ─── Rank movement renderer ─────────────────────────────────
+  const renderMovement = (currentRank, previousRank) => {
+    const m = getRankMovement(currentRank, previousRank);
+    if (m.type === "new") return <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, padding: "2px 6px", background: COLORS.gold, color: COLORS.charcoal, borderRadius: 3 }}>NEW</span>;
+    if (m.type === "up") return <span style={{ fontSize: 12, fontWeight: 700, color: "#1F7A3A" }}>▲ {m.delta}</span>;
+    if (m.type === "down") return <span style={{ fontSize: 12, fontWeight: 700, color: "#B33A3A" }}>▼ {m.delta}</span>;
+    return <span style={{ fontSize: 14, color: COLORS.textGray, opacity: 0.5 }}>—</span>;
+  };
+
+  // ─── Gender icon (compact) ──────────────────────────────────
+  const genderIcon = (g) => {
+    const v = (g || "").toLowerCase();
+    if (v === "men" || v === "male" || v === "m") return <span title="Men" style={{ color: "#3B82F6", fontSize: 12, fontWeight: 700 }}>♂</span>;
+    if (v === "women" || v === "female" || v === "f") return <span title="Women" style={{ color: "#EC4899", fontSize: 12, fontWeight: 700 }}>♀</span>;
+    return <span style={{ color: COLORS.textGray, fontSize: 11, opacity: 0.5 }}>•</span>;
+  };
 
   return (
     <div>
       <SectionHeader title="The Leaderboard" subtitle="Public rankings · Updated weekly" />
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        <Button onClick={() => setView("overall")} variant={view === "overall" ? "primary" : "light"} size="sm">Overall</Button>
-        <Button onClick={() => setView("records")} variant={view === "records" ? "primary" : "light"} size="sm">Event Records</Button>
+
+      {/* ─── STAT BANNER ─── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 20 }}>
+        <Card style={{ padding: 14, textAlign: "center", borderTop: `3px solid ${COLORS.gold}` }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif" }}>{stats.total}</div>
+          <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 600, marginTop: 2 }}>WARRIORS</div>
+        </Card>
+        <Card style={{ padding: 14, textAlign: "center", borderTop: `3px solid ${COLORS.primary}` }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif" }}>{stats.active}</div>
+          <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 600, marginTop: 2 }}>ACTIVE</div>
+        </Card>
+        <Card style={{ padding: 14, textAlign: "center", borderTop: `3px solid ${COLORS.gold}` }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif" }}>{stats.founders}</div>
+          <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 600, marginTop: 2 }}>FOUNDERS ✦</div>
+        </Card>
+        <Card style={{ padding: 14, textAlign: "center", borderTop: `3px solid ${COLORS.primary}` }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif" }}>{stats.records}</div>
+          <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 600, marginTop: 2 }}>RECORDS</div>
+        </Card>
       </div>
-      {view === "overall" && (
-        sorted.length === 0 ? (
-          <Card style={{ textAlign: "center", padding: 48, color: COLORS.textGray, fontStyle: "italic" }}>The leaderboard begins after Event #1.</Card>
-        ) : (
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: COLORS.charcoal, color: COLORS.cream, fontSize: 12, letterSpacing: 1 }}>
-                  <th style={{ padding: 12, textAlign: "left", fontWeight: 600 }}>RANK</th>
-                  <th style={{ padding: 12, textAlign: "left", fontWeight: 600 }}>WARRIOR</th>
-                  <th style={{ padding: 12, textAlign: "center", fontWeight: 600 }}>BELT</th>
-                  <th style={{ padding: 12, textAlign: "center", fontWeight: 600 }}>EVENTS</th>
-                  <th style={{ padding: 12, textAlign: "right", fontWeight: 600 }}>POINTS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((a, i) => {
-                  const isMe = a.phone === currentAthletePhone;
-                  return (
-                    <tr key={a.phone} style={{ background: isMe ? COLORS.creamLight : (i % 2 === 0 ? "#FFFFFF" : "#FAFAF7"), fontWeight: isMe ? 700 : 400 }}>
-                      <td style={{ padding: 12, fontSize: 14 }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: i < 3 ? COLORS.gold : "transparent", fontWeight: 700, fontSize: 12 }}>{i + 1}</span>
-                      </td>
-                      <td style={{ padding: 12, fontSize: 14 }}>
-                        <div>{a.name} {isMe && <span style={{ fontSize: 11, color: COLORS.primary, marginLeft: 6 }}>(YOU)</span>}</div>
-                        {formatWarriorId(a.warrior_id) && (
-                          <div style={{ fontSize: 10, color: COLORS.textGray, fontFamily: "'Cinzel', monospace", letterSpacing: 1, marginTop: 2 }}>
-                            {formatWarriorId(a.warrior_id)}{isFoundingWarrior(a.warrior_id) ? " ✦" : ""}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: 12, textAlign: "center" }}><BeltBadge points={a.total_points || 0} size="sm" /></td>
-                      <td style={{ padding: 12, textAlign: "center", fontSize: 14 }}>{a.events_attended || 0}</td>
-                      <td style={{ padding: 12, textAlign: "right", fontWeight: 700, color: COLORS.primary, fontSize: 14 }}>{a.total_points || 0}</td>
+
+      {/* ─── TABS ─── */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <Button onClick={() => setTab("overall")} variant={tab === "overall" ? "primary" : "light"} size="sm">Overall</Button>
+        <Button onClick={() => setTab("by_event")} variant={tab === "by_event" ? "primary" : "light"} size="sm">By Event</Button>
+        <Button onClick={() => setTab("records")} variant={tab === "records" ? "primary" : "light"} size="sm">Hall of Records</Button>
+      </div>
+
+      {/* ─── OVERALL TAB ─── */}
+      {tab === "overall" && (
+        <>
+          {/* Gender filter chips */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, alignSelf: "center", marginRight: 4 }}>FILTER:</span>
+            {["All", "Men", "Women"].map((g) => (
+              <button key={g} onClick={() => setGenderFilter(g)} style={{
+                padding: "6px 14px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                border: `1px solid ${genderFilter === g ? COLORS.charcoal : COLORS.borderLight}`,
+                background: genderFilter === g ? COLORS.charcoal : "#FFFFFF",
+                color: genderFilter === g ? COLORS.cream : COLORS.charcoal,
+                cursor: "pointer", letterSpacing: 0.5,
+              }}>
+                {g === "Men" && <span style={{ marginRight: 4 }}>♂</span>}
+                {g === "Women" && <span style={{ marginRight: 4 }}>♀</span>}
+                {g}
+              </button>
+            ))}
+          </div>
+
+          {overallSorted.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: 48, color: COLORS.textGray, fontStyle: "italic" }}>
+              {genderFilter === "All" ? "The leaderboard begins after Event #1." : `No ${genderFilter} warriors yet.`}
+            </Card>
+          ) : (
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+                  <thead>
+                    <tr style={{ background: COLORS.charcoal, color: COLORS.cream, fontSize: 11, letterSpacing: 1 }}>
+                      <th style={{ padding: "12px 8px", textAlign: "center", fontWeight: 600, width: 50 }}>RANK</th>
+                      <th style={{ padding: "12px 6px", textAlign: "center", fontWeight: 600, width: 60 }}>MOVE</th>
+                      <th style={{ padding: 12, textAlign: "left", fontWeight: 600 }}>WARRIOR</th>
+                      <th style={{ padding: 12, textAlign: "center", fontWeight: 600 }}>BELT</th>
+                      <th style={{ padding: 12, textAlign: "center", fontWeight: 600 }}>EVENTS</th>
+                      <th style={{ padding: 12, textAlign: "right", fontWeight: 600 }}>POINTS</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Card>
-        )
+                  </thead>
+                  <tbody>
+                    {overallSorted.map((a, i) => {
+                      const isMe = a.phone === currentAthletePhone;
+                      const rank = a._rank;
+                      return (
+                        <tr key={a.phone} style={{ background: isMe ? COLORS.creamLight : (i % 2 === 0 ? "#FFFFFF" : "#FAFAF7"), fontWeight: isMe ? 700 : 400 }}>
+                          <td style={{ padding: "12px 8px", fontSize: 14, textAlign: "center" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: rank <= 3 ? COLORS.gold : "transparent", color: rank <= 3 ? COLORS.charcoal : COLORS.charcoal, fontWeight: 700, fontSize: 12 }}>{rank}</span>
+                          </td>
+                          <td style={{ padding: "12px 6px", textAlign: "center" }}>{renderMovement(rank, a.previous_rank)}</td>
+                          <td style={{ padding: 12, fontSize: 14 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              {genderIcon(a.gender)}
+                              <span>{a.name}</span>
+                              {isMe && <span style={{ fontSize: 10, color: COLORS.primary, fontWeight: 700, background: `${COLORS.primary}15`, padding: "1px 6px", borderRadius: 3, letterSpacing: 1 }}>YOU</span>}
+                            </div>
+                            {formatWarriorId(a.warrior_id) && (
+                              <div style={{ fontSize: 10, color: COLORS.textGray, fontFamily: "'Cinzel', monospace", letterSpacing: 1, marginTop: 2 }}>
+                                {formatWarriorId(a.warrior_id)}{isFoundingWarrior(a.warrior_id) ? " ✦" : ""}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: 12, textAlign: "center" }}><BeltBadge points={a.total_points || 0} size="sm" /></td>
+                          <td style={{ padding: 12, textAlign: "center", fontSize: 14 }}>{a.events_attended || 0}</td>
+                          <td style={{ padding: 12, textAlign: "right", fontWeight: 700, color: COLORS.primary, fontSize: 14 }}>{a.total_points || 0}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </>
       )}
-      {view === "records" && (
+
+      {/* ─── BY EVENT TAB ─── */}
+      {tab === "by_event" && (
+        <>
+          {/* Event picker chips */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, alignSelf: "center", marginRight: 4 }}>EVENT:</span>
+            {EVENTS.map((ev) => (
+              <button key={ev} onClick={() => setEventFilter(ev)} style={{
+                padding: "6px 14px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                border: `1px solid ${eventFilter === ev ? COLORS.primary : COLORS.borderLight}`,
+                background: eventFilter === ev ? COLORS.primary : "#FFFFFF",
+                color: eventFilter === ev ? COLORS.cream : COLORS.charcoal,
+                cursor: "pointer", letterSpacing: 0.5,
+              }}>{ev}</button>
+            ))}
+          </div>
+
+          {/* Current record card */}
+          {currentEventRecord && (
+            <Card style={{ marginBottom: 14, background: COLORS.charcoal, color: COLORS.cream, padding: 18, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: -10, right: -10, opacity: 0.08, pointerEvents: "none" }}>
+                <SwordsEmblem size={100} color={COLORS.gold} />
+              </div>
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <div style={{ fontSize: 10, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>👑 ALL-TIME RECORD HOLDER</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontFamily: "'Cinzel', serif", fontWeight: 700 }}>{currentEventRecord.holder}</div>
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>{eventFilter} · Set on {currentEventRecord.set_on || "—"}</div>
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.gold, fontFamily: "'Cinzel', serif" }}>{currentEventRecord.value}</div>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Top 10 by PB */}
+          {eventLeaderboard.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: 48, color: COLORS.textGray, fontStyle: "italic" }}>
+              No personal bests recorded for {eventFilter} yet.
+            </Card>
+          ) : (
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", background: COLORS.cream, borderBottom: `1px solid ${COLORS.borderLight}` }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, color: COLORS.textGray, fontWeight: 700 }}>
+                  TOP 10 · {eventFilter.toUpperCase()} · {EVENT_LOWER_IS_BETTER[eventFilter] ? "FASTEST" : "BEST PERFORMANCE"}
+                </div>
+              </div>
+              {eventLeaderboard.map((entry, i) => {
+                const a = entry.athlete;
+                const isMe = a.phone === currentAthletePhone;
+                const isHolder = currentEventRecord && currentEventRecord.phone === a.phone;
+                return (
+                  <div key={a.phone} style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "12px 16px",
+                    background: isMe ? COLORS.creamLight : (i % 2 === 0 ? "#FFFFFF" : "#FAFAF7"),
+                    borderBottom: i === eventLeaderboard.length - 1 ? "none" : `1px solid ${COLORS.borderLight}`,
+                    fontWeight: isMe ? 700 : 400,
+                  }}>
+                    <div style={{ width: 32, textAlign: "center" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: i < 3 ? COLORS.gold : "transparent", fontWeight: 700, fontSize: 12 }}>{i + 1}</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {genderIcon(a.gender)}
+                        <span style={{ fontSize: 14 }}>{a.name}</span>
+                        {isHolder && <span title="Record holder" style={{ fontSize: 12 }}>👑</span>}
+                        {isMe && <span style={{ fontSize: 10, color: COLORS.primary, fontWeight: 700, background: `${COLORS.primary}15`, padding: "1px 6px", borderRadius: 3, letterSpacing: 1 }}>YOU</span>}
+                      </div>
+                      <div style={{ fontSize: 10, color: COLORS.textGray, fontFamily: "'Cinzel', monospace", letterSpacing: 1, marginTop: 2 }}>
+                        {formatWarriorId(a.warrior_id)}{entry.date ? ` · ${entry.date}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif" }}>{entry.raw}</div>
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* ─── HALL OF RECORDS TAB ─── */}
+      {tab === "records" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
           {EVENTS.map((ev) => {
             const rec = eventRecords.find((r) => r.event_name === ev);
@@ -2369,13 +2626,58 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                 <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 2, fontWeight: 700 }}>EVENT RECORD</div>
                 <div style={{ fontSize: 18, fontFamily: "'Cinzel', serif", fontWeight: 700, marginBottom: 12 }}>{ev}</div>
                 {rec ? (
-                  <><div style={{ fontSize: 32, fontWeight: 700, color: COLORS.primary }}>{rec.value}</div><div style={{ fontSize: 13, color: COLORS.textGray, marginTop: 4 }}>{rec.holder}</div></>
+                  <>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif" }}>{rec.value}</div>
+                    <div style={{ fontSize: 13, color: COLORS.charcoal, marginTop: 4, fontWeight: 600 }}>👑 {rec.holder}</div>
+                    {rec.set_on && <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 2 }}>Set {rec.set_on}</div>}
+                  </>
                 ) : (<div style={{ fontSize: 13, color: COLORS.textGray, fontStyle: "italic" }}>No record yet — claim it</div>)}
               </Card>
             );
           })}
         </div>
       )}
+
+      {/* ─── WALL OF WARRIORS — founders only ─── */}
+      {founders.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 3, fontWeight: 700, marginBottom: 4 }}>◆ WALL OF WARRIORS ◆</div>
+            <div style={{ fontSize: 22, fontFamily: "'Cinzel', serif", fontWeight: 700, color: COLORS.charcoal }}>The Founding Hundred</div>
+            <div style={{ fontSize: 12, color: COLORS.textGray, marginTop: 4, fontStyle: "italic" }}>Warriors who answered the first call</div>
+          </div>
+          <Card variant="dark" style={{ padding: 22, position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", left: -20, top: -20, opacity: 0.08, pointerEvents: "none" }}>
+              <SwordsEmblem size={140} color={COLORS.gold} />
+            </div>
+            <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
+              {founders.map((a) => {
+                const isMe = a.phone === currentAthletePhone;
+                return (
+                  <div key={a.phone} style={{
+                    padding: "10px 12px",
+                    background: isMe ? `${COLORS.gold}25` : "rgba(212, 160, 23, 0.06)",
+                    border: `1px solid ${isMe ? COLORS.gold : COLORS.gold + "30"}`,
+                    borderRadius: 6,
+                    display: "flex", alignItems: "center", gap: 10,
+                  }}>
+                    <div style={{ fontFamily: "'Cinzel', monospace", fontSize: 11, fontWeight: 700, color: COLORS.gold, letterSpacing: 1, padding: "3px 6px", background: "rgba(0,0,0,0.3)", borderRadius: 3, flexShrink: 0 }}>
+                      {formatWarriorId(a.warrior_id)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {a.name}{isMe && <span style={{ marginLeft: 6, fontSize: 9, color: COLORS.gold }}>(YOU)</span>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, color: COLORS.gold, flexShrink: 0 }}>✦</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+
       <Button onClick={() => onNav("home")} variant="ghost" style={{ width: "100%", marginTop: 24 }}>← Back to home</Button>
     </div>
   );
@@ -2590,6 +2892,13 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
     try {
       const lines = csvInput.trim().split("\n").filter(Boolean);
       if (lines.length < 2) throw new Error("Need header row + at least 1 data row");
+
+      // Snapshot ranks BEFORE applying — captures "before this event" standings
+      // so leaderboard ▲▼ arrows show movement caused by these results.
+      setCsvStatus("Snapshotting ranks...");
+      await snapshotAthleteRanks(allAthletes);
+      setCsvStatus("Processing...");
+
       const header = lines[0].toLowerCase().split(",").map((s) => s.trim());
       const dataRows = lines.slice(1).map((line) => {
         const cols = line.split(",").map((s) => s.trim());
@@ -2959,6 +3268,12 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       const wb = XLSX.read(buf, { type: "array" });
       const sheetName = wb.SheetNames.find((n) => n.toLowerCase().includes("result")) || wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
+
+      // Snapshot ranks BEFORE applying — captures "before this event" standings
+      // so leaderboard ▲▼ arrows show movement caused by these results.
+      setCsvStatus("Snapshotting ranks...");
+      await snapshotAthleteRanks(allAthletes);
+      setCsvStatus("Reading Excel file...");
       // Read as 2D array — we walk row by row since headers repeat per batch
       const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
       if (!data.length) throw new Error("Sheet has no rows");
@@ -4032,7 +4347,7 @@ export default function App() {
     return allRegistrations.find((r) => r.phone === athlete.phone && r.event_id === event.id);
   }, [athlete, allRegistrations, event]);
 
-  const leaderboardPreview = useMemo(() => [...allAthletes].sort((a, b) => (b.total_points || 0) - (a.total_points || 0)).slice(0, 5), [allAthletes]);
+  const leaderboardPreview = useMemo(() => sortAthletesByStanding(allAthletes).slice(0, 5), [allAthletes]);
 
   if (!supabaseEnabled) return <SetupRequired />;
   if (!loaded) return (
