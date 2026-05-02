@@ -1906,18 +1906,24 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
               background: i % 2 === 0 ? "rgba(212, 160, 23, 0.08)" : "rgba(212, 160, 23, 0.04)",
               borderRadius: 6, marginBottom: 6,
               border: `1px solid ${COLORS.gold}40`,
+              gap: 10,
             }}>
-              <div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream }}>{t.event_name}</div>
                 <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · {t.gender_category || "Mixed"} · Batch {t.batch_number} · Position {t.position}</div>
               </div>
               <div style={{
-                fontFamily: "'Cinzel', monospace", fontSize: 18, fontWeight: 700,
-                color: COLORS.gold, letterSpacing: 1,
-                padding: "6px 12px",
+                fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
+                fontSize: 16, fontWeight: 700,
+                color: COLORS.gold, letterSpacing: 1.5,
+                padding: "8px 14px",
                 background: "rgba(0,0,0,0.3)",
                 borderRadius: 4,
                 border: `1px solid ${COLORS.gold}`,
+                minWidth: 132,
+                textAlign: "center",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
               }}>{t.token}</div>
             </div>
           ))}
@@ -2150,26 +2156,23 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
         <>
           <SectionHeader title="Your Upcoming Event" subtitle="You're registered" />
           <Card style={{ marginBottom: 16, borderLeft: `4px solid ${COLORS.gold}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
-              <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 1.5, marginBottom: 4 }}>
-                  ◆ {getEventDateStatus(event).label} ◆
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginBottom: 2 }}>{event?.event_date || "Date TBA"}</div>
-                <div style={{ fontSize: 13, color: COLORS.textGray }}>{event?.venue || "Venue TBA"}</div>
+            {/* Centered title block — status, date, venue, payment chip */}
+            <div style={{ textAlign: "center", marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 1.5, marginBottom: 6 }}>
+                ◆ {getEventDateStatus(event).label} ◆
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 10, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>PAYMENT</div>
-                <div style={{ display: "inline-block", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1, background: currentRegistration.payment_status === "verified" ? "#D6F0DC" : "#FCE7C0", color: currentRegistration.payment_status === "verified" ? "#1F7A3A" : "#7B5500" }}>
-                  {currentRegistration.payment_status === "verified" ? "✓ VERIFIED" : "⏳ PENDING"}
-                </div>
-                {currentRegistration.payment_status !== "verified" && (
-                  <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 4, fontStyle: "italic" }}>Verifying payment...</div>
-                )}
+              <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.charcoal, fontFamily: "'Cinzel', serif", marginBottom: 4 }}>{event?.event_date || "Date TBA"}</div>
+              <div style={{ fontSize: 13, color: COLORS.textGray, marginBottom: 12 }}>{event?.venue || "Venue TBA"}</div>
+              <div style={{ fontSize: 10, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 5 }}>PAYMENT</div>
+              <div style={{ display: "inline-block", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: 1, background: currentRegistration.payment_status === "verified" ? "#D6F0DC" : "#FCE7C0", color: currentRegistration.payment_status === "verified" ? "#1F7A3A" : "#7B5500" }}>
+                {currentRegistration.payment_status === "verified" ? "✓ VERIFIED" : "⏳ PENDING"}
               </div>
+              {currentRegistration.payment_status !== "verified" && (
+                <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 6, fontStyle: "italic" }}>Verifying payment...</div>
+              )}
             </div>
-            <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 10 }}>
-              <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>{currentRegistration.events_selected?.length} EVENT{currentRegistration.events_selected?.length !== 1 ? "S" : ""} REGISTERED</div>
+            <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 12 }}>
+              <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>{currentRegistration.events_selected?.length} EVENT{currentRegistration.events_selected?.length !== 1 ? "S" : ""} REGISTERED</div>
               {currentRegistration.events_selected?.map((e) => (
                 <div key={e} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13 }}>
                   <span>{e}</span>
@@ -2202,18 +2205,24 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
                 background: i % 2 === 0 ? "rgba(212, 160, 23, 0.08)" : "rgba(212, 160, 23, 0.04)",
                 borderRadius: 6, marginBottom: 6,
                 border: `1px solid ${COLORS.gold}40`,
+                gap: 10,
               }}>
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.cream }}>{t.event_name}</div>
                   <div style={{ fontSize: 11, color: COLORS.gold, opacity: 0.85 }}>{t.tier} · {t.gender_category || "Mixed"} · Batch {t.batch_number} · Position {t.position}</div>
                 </div>
                 <div style={{
-                  fontFamily: "'Cinzel', monospace", fontSize: 18, fontWeight: 700,
-                  color: COLORS.gold, letterSpacing: 1,
-                  padding: "6px 12px",
+                  fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
+                  fontSize: 16, fontWeight: 700,
+                  color: COLORS.gold, letterSpacing: 1.5,
+                  padding: "8px 14px",
                   background: "rgba(0,0,0,0.3)",
                   borderRadius: 4,
                   border: `1px solid ${COLORS.gold}`,
+                  minWidth: 132,
+                  textAlign: "center",
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
                 }}>{t.token}</div>
               </div>
             ))}
@@ -3579,13 +3588,14 @@ const AdminLogin = ({ onLogin, onCancel }) => {
 
 // ============================================================
 // IN-APP BROWSER DETECTION
-// Catches WhatsApp / Instagram / Facebook / LinkedIn webviews on iOS
+// Catches WhatsApp / Instagram / Facebook / LinkedIn / etc webviews
 // where modern React apps frequently fail to render properly.
 // Shows a friendly "Open in Safari" prompt with a bypass button.
 // ============================================================
 const detectInAppBrowser = () => {
   if (typeof navigator === "undefined" || typeof window === "undefined") return null;
   const ua = navigator.userAgent || "";
+
   // Honor force flags via URL
   try {
     const params = new URLSearchParams(window.location.search);
@@ -3593,21 +3603,123 @@ const detectInAppBrowser = () => {
     if (params.get("forcegate") === "1") return "Forced (debug)"; // show gate even on Safari
   } catch (e) {}
 
-  // Only catch CONFIRMED in-app browsers via explicit signatures.
-  // We default to LETTING USERS THROUGH if we're not sure — better to risk a slightly
-  // broken WhatsApp experience than to wrongly gate a legitimate browser.
+  // ─── Layer 1: Explicit app signatures (most reliable) ───
   if (/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)) return "Facebook";
   if (/Instagram/i.test(ua)) return "Instagram";
   if (/LinkedInApp/i.test(ua)) return "LinkedIn";
-  if (/Twitter|TwitterAndroid|X\/| Line\/|TelegramiOS/i.test(ua)) return "another app";
-  // WhatsApp iOS UA pattern (specific): contains "Mobile/" but lacks "Safari/" entirely
-  // This is more permissive than before — only flags clear WhatsApp pattern.
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  if (isIOS && /Mobile\//i.test(ua) && !/Safari\//i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(ua)) {
-    return "WhatsApp or another app's built-in browser";
+  if (/Twitter|TwitterAndroid|X\/| Line\/|TelegramiOS|Telegram\//i.test(ua)) return "an in-app browser";
+  if (/WhatsApp/i.test(ua)) return "WhatsApp";
+  if (/Snapchat/i.test(ua)) return "Snapchat";
+  if (/Pinterest/i.test(ua)) return "Pinterest";
+  if (/MicroMessenger/i.test(ua)) return "WeChat";
+
+  // ─── Layer 2: iOS WebView fingerprint ───
+  // True iOS Safari ALWAYS has both "Version/X.X" AND "Safari/X" in UA.
+  // WKWebView (embedded in apps) has neither, or only Safari/.
+  // Also: navigator.standalone is `false` in real Safari, `true` in PWA, `undefined` in WKWebView.
+  const isIOS = /iPhone|iPad|iPod/i.test(ua) ||
+    (/Macintosh/i.test(ua) && typeof navigator.maxTouchPoints === "number" && navigator.maxTouchPoints > 1); // iPad Pro reports as Mac
+
+  if (isIOS) {
+    const isOtherIOSBrowser = /CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Brave|UCBrowser|YaBrowser|MQQBrowser/i.test(ua);
+    if (isOtherIOSBrowser) return null; // user is on dedicated iOS browser, allow
+
+    const hasVersionString = /Version\/\d+\.\d+/i.test(ua);
+    const hasSafariSlash = /Safari\/\d+/i.test(ua);
+    const standaloneIsUndefined = typeof navigator.standalone === "undefined";
+
+    // Strongest signal: Safari proper has BOTH Version/ and Safari/. Lacking either = WebView.
+    if (!hasVersionString || !hasSafariSlash) {
+      return "an in-app browser";
+    }
+    // Even with both, undefined `standalone` strongly indicates WKWebView wrapper.
+    if (standaloneIsUndefined) {
+      return "an in-app browser";
+    }
   }
+
+  // ─── Layer 3: Android WebView fingerprint ───
+  // Android WebView UA contains "; wv)" — distinct from Chrome/Firefox/Samsung Internet.
+  const isAndroid = /Android/i.test(ua);
+  if (isAndroid && /; wv\)/i.test(ua)) {
+    return "an in-app browser";
+  }
+
   return null; // default: allow through
 };
+
+// ============================================================
+// ERROR BOUNDARY
+// Catches React render/mount errors so even a fatal crash still shows
+// a useful "Open in Safari" fallback instead of a blank white screen.
+// ============================================================
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, errorMsg: "" };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, errorMsg: (error && error.message) || "Unknown error" };
+  }
+  componentDidCatch(error, info) {
+    try { if (typeof console !== "undefined") console.error("Rann error:", error, info); } catch (e) {}
+  }
+  copyLink() {
+    try { navigator.clipboard.writeText(window.location.href); alert("Link copied! Paste in Safari or Chrome."); }
+    catch (e) { alert("Couldn't auto-copy. Long-press the URL bar to copy it manually."); }
+  }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    const detected = detectInAppBrowser();
+    return (
+      <div style={{
+        minHeight: "100vh",
+        background: "linear-gradient(135deg, #6B0000 0%, #8B0000 100%)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20, color: "#F5F1E8",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+      }}>
+        <div style={{
+          maxWidth: 460, width: "100%",
+          background: "#1A1A1A",
+          borderRadius: 16, padding: "32px 24px",
+          textAlign: "center", border: "2px solid #D4A017",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+        }}>
+          <div style={{ marginBottom: 18 }}><SwordsEmblem size={64} color="#D4A017" /></div>
+          <div style={{ fontSize: 11, color: "#D4A017", letterSpacing: 3, fontWeight: 700, marginBottom: 6 }}>◆ STEP INTO RANN ◆</div>
+          <div style={{ fontSize: 22, fontFamily: "'Cinzel', serif", fontWeight: 700, marginBottom: 14, letterSpacing: 1 }}>
+            Page didn't load fully
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.92, marginBottom: 22 }}>
+            {detected
+              ? <>You're viewing this inside <strong>{detected}</strong>, which doesn't fully support our platform.<br/><br/>Please open in <strong style={{ color: "#D4A017" }}>Safari</strong> or <strong style={{ color: "#D4A017" }}>Chrome</strong> for the full experience.</>
+              : <>Something went wrong loading the page. Try opening this link in <strong style={{ color: "#D4A017" }}>Safari</strong> or <strong style={{ color: "#D4A017" }}>Chrome</strong>.</>
+            }
+          </div>
+          <button onClick={() => this.copyLink()} style={{
+            width: "100%", padding: "12px 20px",
+            background: "#D4A017", color: "#1A1A1A",
+            border: "none", borderRadius: 8,
+            fontSize: 14, fontWeight: 700, letterSpacing: 1,
+            cursor: "pointer", marginBottom: 10,
+            fontFamily: "inherit",
+          }}>📋 Copy Link</button>
+          <button onClick={() => { try { window.location.reload(); } catch (e) {} }} style={{
+            width: "100%", padding: "10px 20px",
+            background: "transparent", color: "#F5F1E8",
+            border: "1px solid #F5F1E840", borderRadius: 8,
+            fontSize: 12, fontWeight: 600,
+            cursor: "pointer", fontFamily: "inherit", opacity: 0.8,
+          }}>↻ Reload</button>
+          <div style={{ fontSize: 10, opacity: 0.5, marginTop: 18, lineHeight: 1.5 }}>
+            रण • Where warriors are made
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
 
 const InAppBrowserGate = ({ children }) => {
   // Detect SYNCHRONOUSLY on first render — before children try to mount.
@@ -3904,6 +4016,7 @@ export default function App() {
 
   if (!supabaseEnabled) return <SetupRequired />;
   if (!loaded) return (
+    <AppErrorBoundary>
     <InAppBrowserGate>
       <div style={{
         background: COLORS.creamLight,
@@ -3927,9 +4040,11 @@ export default function App() {
         </div>
       </div>
     </InAppBrowserGate>
+    </AppErrorBoundary>
   );
 
   return (
+    <AppErrorBoundary>
     <InAppBrowserGate>
     <div style={{
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -4102,5 +4217,6 @@ export default function App() {
       </div>
     </div>
     </InAppBrowserGate>
+    </AppErrorBoundary>
   );
 }
