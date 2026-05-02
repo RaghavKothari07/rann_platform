@@ -630,13 +630,15 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
     {/* Welcome back / Login row */}
     {athlete ? (
       <Card variant="parchment" style={{ marginBottom: 24, borderColor: COLORS.gold }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <div>
+        <div className="rann-welcome-back" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, textAlign: "left" }}>
+          <div style={{ flex: "1 1 auto", minWidth: 0 }}>
             <div style={{ fontSize: 11, color: COLORS.earth, letterSpacing: 2, fontWeight: 700 }}>◆ WELCOME BACK ◆</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, marginTop: 4, fontFamily: "'Cinzel', serif" }}>{athlete.name}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, marginTop: 4, fontFamily: "'Cinzel', serif", wordBreak: "break-word" }}>{athlete.name}</div>
             <div style={{ marginTop: 10 }}><BeltBadge points={athlete.total_points || 0} /></div>
           </div>
-          <Button onClick={() => onNav("dashboard")} variant="primary">Enter Your Dashboard →</Button>
+          <div className="rann-welcome-back-cta">
+            <Button onClick={() => onNav("dashboard")} variant="primary">Enter Your Dashboard →</Button>
+          </div>
         </div>
       </Card>
     ) : (
@@ -648,8 +650,8 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 24 }}>
           {/* New Warrior side */}
           <div className="rann-welcome-half" style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 240px", minWidth: 0 }}>
-            <SwordsEmblem size={36} color={COLORS.gold} />
-            <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="rann-welcome-icon"><SwordsEmblem size={36} color={COLORS.gold} /></div>
+            <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
               <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 1.5, fontWeight: 700, marginBottom: 2 }}>NEW TO RANN?</div>
               <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 700 }}>Step into the arena</div>
             </div>
@@ -661,8 +663,8 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
           <div className="rann-welcome-divider" style={{ width: 1, height: 48, background: COLORS.borderLight }}></div>
           {/* Returning Warrior side */}
           <div className="rann-welcome-half" style={{ display: "flex", alignItems: "center", gap: 16, flex: "1 1 240px", minWidth: 0 }}>
-            <SwordsEmblem size={36} color={COLORS.primary} />
-            <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="rann-welcome-icon"><SwordsEmblem size={36} color={COLORS.primary} /></div>
+            <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
               <div style={{ fontSize: 11, color: COLORS.primary, letterSpacing: 1.5, fontWeight: 700, marginBottom: 2 }}>RETURNING WARRIOR?</div>
               <div style={{ fontSize: 14, color: COLORS.charcoal, fontWeight: 700 }}>Welcome back</div>
             </div>
@@ -4452,27 +4454,53 @@ export default function App() {
           /* Hero "ENTER THE ARENA" button: when its container wraps to its own row, stretch it full-width and center the button */
           .rann-hero-cta { width: 100% !important; display: flex !important; justify-content: center !important; }
           .rann-hero-cta > button, .rann-hero-cta > div { width: 100% !important; max-width: 320px; }
-          /* Welcome card: each half stacks (icon+text on row 1, button below full-width) */
-          .rann-welcome-half { flex-wrap: wrap !important; }
-          .rann-welcome-half > .rann-welcome-cta { flex: 0 0 100% !important; margin-left: 0 !important; margin-top: 10px !important; }
+
+          /* Welcome card halves on mobile: hide decorative icon, force left text alignment, button drops below full-width */
+          .rann-welcome-icon { display: none !important; }
+          .rann-welcome-half { flex-wrap: wrap !important; gap: 0 !important; }
+          .rann-welcome-half > div:not(.rann-welcome-cta):not(.rann-welcome-icon) { text-align: left !important; }
+          .rann-welcome-half > .rann-welcome-cta { flex: 0 0 100% !important; margin-left: 0 !important; margin-top: 12px !important; }
           .rann-welcome-half > .rann-welcome-cta > button { width: 100% !important; }
-          /* Hide vertical divider between welcome halves on mobile (it floats awkwardly) */
           .rann-welcome-divider { display: none !important; }
-          /* Cards that should stay side-by-side on mobile (warrior profile, upcoming event) */
+
+          /* Welcome BACK card (logged-in) — same treatment: text on top left, button full-width below */
+          .rann-welcome-back > .rann-welcome-back-cta { flex: 0 0 100% !important; margin-top: 12px !important; }
+          .rann-welcome-back > .rann-welcome-back-cta > button { width: 100% !important; }
+
+          /* Side-by-side cards (used on the upcoming event card to keep date↔payment chip side-by-side) */
           .rann-side-by-side { flex-wrap: nowrap !important; }
           .rann-side-by-side > .rann-side-left { min-width: 0 !important; flex: 1 1 0 !important; }
           .rann-side-by-side > .rann-side-right { flex-shrink: 0 !important; }
-          /* Warrior profile card on mobile: shrink padding + name + medallion to keep things side-by-side */
-          .rann-warrior-card { padding: 20px !important; }
-          .rann-warrior-card .rann-warrior-name { font-size: 22px !important; }
+
+          /* Warrior profile card on mobile: stack into a clean column with a subtle divider, belt strip centered below */
+          .rann-warrior-card { padding: 22px !important; }
+          .rann-warrior-card > .rann-side-by-side {
+            flex-direction: column !important;
+            flex-wrap: nowrap !important;
+            align-items: stretch !important;
+            gap: 0 !important;
+          }
+          .rann-warrior-card .rann-side-left { text-align: left !important; }
+          .rann-warrior-card .rann-side-right {
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            margin-top: 16px !important;
+            padding-top: 16px !important;
+            border-top: 1px solid #D4A01740 !important;
+            gap: 10px !important;
+          }
+          .rann-warrior-card .rann-side-right > div:first-child { text-align: center !important; }
+          .rann-warrior-card .rann-warrior-name { font-size: 24px !important; }
           .rann-warrior-card .rann-belt-label { font-size: 22px !important; }
-          .rann-warrior-card .rann-belt-medallion { width: 54px !important; height: 54px !important; font-size: 20px !important; }
+          .rann-warrior-card .rann-belt-medallion { width: 56px !important; height: 56px !important; font-size: 20px !important; }
         }
         @media (max-width: 480px) {
           .rann-belt-grid { grid-template-columns: 1fr !important; }
-          .rann-warrior-card .rann-warrior-name { font-size: 19px !important; }
-          .rann-warrior-card .rann-belt-label { font-size: 18px !important; }
-          .rann-warrior-card .rann-belt-medallion { width: 48px !important; height: 48px !important; font-size: 17px !important; }
+          .rann-warrior-card .rann-warrior-name { font-size: 22px !important; }
+          .rann-warrior-card .rann-belt-label { font-size: 20px !important; }
+          .rann-warrior-card .rann-belt-medallion { width: 50px !important; height: 50px !important; font-size: 18px !important; }
         }
         @media (min-width: 900px) {
           .rann-event-grid { grid-template-columns: repeat(4, 1fr) !important; }
