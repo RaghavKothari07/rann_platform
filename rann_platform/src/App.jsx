@@ -208,17 +208,59 @@ const renderGenderBadge = (gender, size = 18) => {
   return null;
 };
 
+// Normalize gender string from DB to canonical "Men" | "Women" | null.
+// Handles legacy "Male"/"Female", single-letter "M"/"F", current "Men"/"Women",
+// and anything weird like " male ", "MEN", "femaIe" (typo'd L), "boy"/"girl", etc.
+const normalizeGender = (gender) => {
+  if (gender === null || gender === undefined) return null;
+  const v = String(gender).toLowerCase().trim();
+  if (!v) return null;
+  // Exact matches (fast path)
+  if (v === "men" || v === "male" || v === "m" || v === "boy" || v === "man") return "Men";
+  if (v === "women" || v === "female" || v === "f" || v === "girl" || v === "woman") return "Women";
+  // Substring fallback (catches "Male ", "FEMALE", etc.)
+  // Important: check female/women first because "female" contains "male"
+  if (v.includes("female") || v.includes("women") || v.includes("woman")) return "Women";
+  if (v.includes("male") || v.includes("men") || v.includes("man")) return "Men";
+  return null;
+};
+
 
 // ============================================================
 // RANK MOVEMENT (▲ / ▼ / NEW indicators on the leaderboard)
 // ============================================================
 
-// Standard sort used everywhere — ties broken by events_attended
+// Standard sort used everywhere — points DESC, events_attended DESC, then warrior_id ASC
+// as final stable tiebreaker so ranks dont jump around when DB returns rows in different order.
 const sortAthletesByStanding = (athletes) =>
   [...athletes].sort((a, b) => {
     if ((b.total_points || 0) !== (a.total_points || 0)) return (b.total_points || 0) - (a.total_points || 0);
-    return (b.events_attended || 0) - (a.events_attended || 0);
+    if ((b.events_attended || 0) !== (a.events_attended || 0)) return (b.events_attended || 0) - (a.events_attended || 0);
+    return (a.warrior_id || 999999) - (b.warrior_id || 999999);
   });
+
+// Standard competition ranking ("1224" / "1334"): tied athletes share a rank, next rank skips.
+// Pass `isTied(prev, curr)` — return true if curr should share prev's rank.
+// Returns array of { ...item, _rank } in the same order it was passed in (assumes already sorted).
+const assignCompetitionRanks = (sortedItems, isTied) => {
+  const result = [];
+  let lastRank = 0;
+  for (let i = 0; i < sortedItems.length; i++) {
+    const item = sortedItems[i];
+    let rank;
+    if (i === 0) rank = 1;
+    else if (isTied(sortedItems[i - 1], item)) rank = lastRank;       // tied with previous
+    else rank = i + 1;                                                 // not tied → ordinal position
+    lastRank = rank;
+    result.push({ ...item, _rank: rank });
+  }
+  return result;
+};
+
+// Standing-tied for overall leaderboard: same points AND same events_attended (warrior_id is just stable order, not a ranking signal)
+const standingTied = (a, b) =>
+  (a.total_points || 0) === (b.total_points || 0) &&
+  (a.events_attended || 0) === (b.events_attended || 0);
 
 // Returns rank movement vs previous standings:
 //   { type: "up"|"down"|"same"|"new", delta?: number }
@@ -230,15 +272,16 @@ const getRankMovement = (currentRank, previousRank) => {
 };
 
 // Snapshot — call BEFORE importing new event results so we capture
-// the "before" ranks. Returns once all rows are updated.
+// the "before" ranks. Uses standard competition ranking (ties share a rank).
 const snapshotAthleteRanks = async (allAthletes) => {
   const sorted = sortAthletesByStanding(allAthletes);
+  const ranked = assignCompetitionRanks(sorted, standingTied);
   const now = new Date().toISOString();
   // Parallel updates — fine for current scale (<200 athletes).
   // If we ever cross ~500, switch to a single bulk RPC.
-  await Promise.all(sorted.map((a, i) =>
+  await Promise.all(ranked.map((a) =>
     supabase.from("athletes").update({
-      previous_rank: i + 1,
+      previous_rank: a._rank,
       previous_rank_at: now,
     }).eq("phone", a.phone)
   ));
@@ -967,7 +1010,7 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       {leaderboardPreview && leaderboardPreview.length > 0 ? (
         <Card style={{ padding: 0, overflow: "hidden" }}>
           {leaderboardPreview.slice(0, 5).map((a, i) => {
-            const rank = i + 1;
+            const rank = a._rank;
             const movement = getRankMovement(rank, a.previous_rank);
             const movementEl = (
               movement.type === "new" ? <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1, padding: "1px 5px", background: COLORS.gold, color: COLORS.charcoal, borderRadius: 3 }}>NEW</span> :
@@ -982,15 +1025,15 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
               alignItems: "center",
               gap: 12,
               borderBottom: i < 4 ? `1px solid ${COLORS.borderLight}` : "none",
-              background: i < 3 ? `linear-gradient(90deg, ${COLORS.gold}10 0%, transparent 50%)` : "transparent",
+              background: rank <= 3 ? `linear-gradient(90deg, ${COLORS.gold}10 0%, transparent 50%)` : "transparent",
             }}>
               <div style={{
                 width: 36, height: 36, borderRadius: "50%",
-                background: i === 0 ? COLORS.gold : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : COLORS.creamLight,
+                background: rank === 1 ? COLORS.gold : rank === 2 ? "#C0C0C0" : rank === 3 ? "#CD7F32" : COLORS.creamLight,
                 color: COLORS.charcoal,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontWeight: 700, fontSize: 14,
-                border: i < 3 ? `2px solid ${COLORS.charcoal}` : `1px solid ${COLORS.borderLight}`,
+                border: rank <= 3 ? `2px solid ${COLORS.charcoal}` : `1px solid ${COLORS.borderLight}`,
                 fontFamily: "'Cinzel', serif",
                 flexShrink: 0,
               }}>{rank}</div>
@@ -1634,8 +1677,8 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
                 <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Gender <span style={{ color: COLORS.primary }}>*</span></label>
                 <select value={gender} onChange={(e) => setGender(e.target.value)} style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box", fontFamily: "inherit" }}>
                   <option value="">Select...</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
+                  <option value="Men">Male</option>
+                  <option value="Women">Female</option>
                   <option value="Prefer not to say">Prefer not to say</option>
                 </select>
               </div>
@@ -2086,8 +2129,10 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
   const nextBelt = getNextBelt(points);
   const progress = nextBelt ? Math.min(100, (points - belt.min) / (nextBelt.min - belt.min) * 100) : 100;
   const myRank = useMemo(() => {
-    const sorted = [...allAthletes].sort((a, b) => (b.total_points || 0) - (a.total_points || 0));
-    return sorted.findIndex((a) => a.phone === athlete.phone) + 1;
+    const sorted = sortAthletesByStanding(allAthletes);
+    const ranked = assignCompetitionRanks(sorted, standingTied);
+    const me = ranked.find((a) => a.phone === athlete.phone);
+    return me ? me._rank : 0;
   }, [allAthletes, athlete]);
 
   return (
@@ -2402,11 +2447,12 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
     return { total, active, founders, records };
   }, [allAthletes, eventRecords]);
 
-  // ─── Overall sorted list (apply gender filter) ─────────────
+  // ─── Overall sorted list with competition ranks (apply gender filter) ──
   const overallSorted = useMemo(() => {
-    const ranked = sortAthletesByStanding(allAthletes).map((a, i) => ({ ...a, _rank: i + 1 }));
+    const sorted = sortAthletesByStanding(allAthletes);
+    const ranked = assignCompetitionRanks(sorted, standingTied);
     if (genderFilter === "All") return ranked;
-    return ranked.filter((a) => (a.gender || "").toLowerCase() === genderFilter.toLowerCase());
+    return ranked.filter((a) => normalizeGender(a.gender) === genderFilter);
   }, [allAthletes, genderFilter]);
 
   // ─── Per-event leaderboard (sort by PB, top 10, respects shared genderFilter) ──
@@ -2414,7 +2460,7 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
     const lowerIsBetter = !!EVENT_LOWER_IS_BETTER[eventFilter];
     const filteredAthletes = genderFilter === "All"
       ? allAthletes
-      : allAthletes.filter((a) => (a.gender || "").toLowerCase() === genderFilter.toLowerCase());
+      : allAthletes.filter((a) => normalizeGender(a.gender) === genderFilter);
     const withPB = filteredAthletes
       .map((a) => {
         const pbField = a.personal_bests?.[eventFilter];
@@ -2426,8 +2472,13 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
         return { athlete: a, raw, date, numeric };
       })
       .filter(Boolean);
-    withPB.sort((x, y) => lowerIsBetter ? x.numeric - y.numeric : y.numeric - x.numeric);
-    return withPB.slice(0, 10);
+    withPB.sort((x, y) => {
+      if (x.numeric !== y.numeric) return lowerIsBetter ? x.numeric - y.numeric : y.numeric - x.numeric;
+      return (x.athlete.warrior_id || 999999) - (y.athlete.warrior_id || 999999); // stable ordering for tied entries
+    });
+    // Apply competition ranking (ties share a rank, next rank skips)
+    const ranked = assignCompetitionRanks(withPB, (a, b) => a.numeric === b.numeric);
+    return ranked.slice(0, 10);
   }, [allAthletes, eventFilter, genderFilter]);
 
   const currentEventRecord = eventRecords.find((r) => r.event_name === eventFilter);
@@ -2637,7 +2688,7 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                     fontWeight: isMe ? 700 : 400,
                   }}>
                     <div style={{ width: 32, textAlign: "center", flexShrink: 0 }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: i < 3 ? COLORS.gold : "transparent", fontWeight: 700, fontSize: 12 }}>{i + 1}</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: entry._rank <= 3 ? COLORS.gold : "transparent", fontWeight: 700, fontSize: 12 }}>{entry._rank}</span>
                     </div>
                     <div style={{ flexShrink: 0 }}>{renderGenderBadge(a.gender, 18)}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -4390,7 +4441,11 @@ export default function App() {
     return allRegistrations.find((r) => r.phone === athlete.phone && r.event_id === event.id);
   }, [athlete, allRegistrations, event]);
 
-  const leaderboardPreview = useMemo(() => sortAthletesByStanding(allAthletes).slice(0, 5), [allAthletes]);
+  const leaderboardPreview = useMemo(() => {
+    const sorted = sortAthletesByStanding(allAthletes);
+    const ranked = assignCompetitionRanks(sorted, standingTied);
+    return ranked.slice(0, 5);
+  }, [allAthletes]);
 
   if (!supabaseEnabled) return <SetupRequired />;
   if (!loaded) return (
