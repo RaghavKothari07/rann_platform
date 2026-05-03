@@ -2143,7 +2143,7 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
 // ============================================================
 // DASHBOARD
 // ============================================================
-const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNav, allAthletes, myBatchTokens = [], myWaitlist = [] }) => {
+const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNav, allAthletes, myBatchTokens = [], myWaitlist = [], upiId, refreshData }) => {
   const points = athlete.total_points || 0;
   const belt = getBelt(points);
   const nextBelt = getNextBelt(points);
@@ -2155,8 +2155,119 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
     return me ? me._rank : 0;
   }, [allAthletes, athlete]);
 
+  // ─── Pending-payment self-serve flow ───────────────────────────
+  // Shows when the athlete has an active registration that's pending payment AND
+  // hasn't yet submitted a payment reference. This catches:
+  //   • Promoted-from-waitlist athletes (admin promoted them, they need to pay)
+  //   • Anyone whose initial registration didn't capture a payment ref
+  //   • Future cases where admin manually added events
+  const needsPayment = !!(
+    currentRegistration &&
+    currentRegistration.payment_status === "pending" &&
+    !currentRegistration.payment_note
+  );
+  const [paymentExpanded, setPaymentExpanded] = useState(false);
+  const [payRef, setPayRef] = useState("");
+  const [paySubmitting, setPaySubmitting] = useState(false);
+  const [payError, setPayError] = useState("");
+
+  const submitPayment = async () => {
+    setPayError("");
+    const cleanRef = payRef.replace(/\D/g, "");
+    if (cleanRef.length < 6) {
+      setPayError("Payment reference must be at least 6 digits");
+      return;
+    }
+    setPaySubmitting(true);
+    try {
+      const { error: upErr } = await supabase.from("registrations")
+        .update({ payment_note: cleanRef })
+        .eq("event_id", currentRegistration.event_id)
+        .eq("phone", currentRegistration.phone);
+      if (upErr) throw upErr;
+      if (refreshData) await refreshData();
+      setPaymentExpanded(false);
+      setPayRef("");
+    } catch (e) {
+      setPayError("Could not save: " + (e.message || "unknown error"));
+    } finally {
+      setPaySubmitting(false);
+    }
+  };
+
   return (
     <div>
+      {/* ─── Payment Required Alert ─── */}
+      {needsPayment && (
+        <Card variant="crimson" style={{ marginBottom: 18, padding: 0, overflow: "hidden", border: `2px solid ${COLORS.gold}` }}>
+          <div style={{ padding: "18px 22px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 28 }}>⚠</div>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 3 }}>PAYMENT REQUIRED</div>
+                <div style={{ fontSize: 16, fontFamily: "'Cinzel', serif", fontWeight: 700, color: COLORS.cream, lineHeight: 1.3 }}>
+                  Lock in your spot — pay ₹{currentRegistration.total_cost}
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.cream, opacity: 0.85, marginTop: 4, lineHeight: 1.5 }}>
+                  Your slot is reserved but not confirmed until payment is received and verified.
+                </div>
+              </div>
+              {!paymentExpanded && (
+                <Button onClick={() => setPaymentExpanded(true)} variant="gold" size="sm">Pay Now →</Button>
+              )}
+            </div>
+          </div>
+          {paymentExpanded && (
+            <div style={{ background: "#FFFFFF", color: COLORS.charcoal, padding: 22 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 22, alignItems: "center", marginBottom: 18, flexWrap: "wrap" }}>
+                <div style={{ background: "#FFFFFF", padding: 8, borderRadius: 6, border: `1px solid ${COLORS.borderLight}` }}>
+                  <UPIQrCode upiId={upiId} amount={currentRegistration.total_cost} size={140} />
+                </div>
+                <div style={{ minWidth: 180 }}>
+                  <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>SCAN OR PAY TO</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 10, wordBreak: "break-all" }}>{upiId}</div>
+                  <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>AMOUNT</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif" }}>₹{currentRegistration.total_cost}</div>
+                  {upiId && (
+                    <a href={`upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent("Rann League")}&am=${currentRegistration.total_cost}&cu=INR`}
+                       style={{ display: "inline-block", marginTop: 10, padding: "8px 14px", background: COLORS.charcoal, color: COLORS.cream, borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none", letterSpacing: 0.5 }}>
+                      Open in UPI app →
+                    </a>
+                  )}
+                </div>
+              </div>
+              <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: COLORS.charcoal }}>After paying, enter your UPI reference number</div>
+                <div style={{ fontSize: 11, color: COLORS.textGray, marginBottom: 10, lineHeight: 1.5 }}>
+                  You'll find this in your UPI app's transaction history (PhonePe, GPay, Paytm). Numeric only, usually 12 digits.
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="e.g., 425671298304"
+                  value={payRef}
+                  onChange={(e) => { setPayRef(e.target.value.replace(/\D/g, "").slice(0, 20)); setPayError(""); }}
+                  style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box", letterSpacing: 1 }}
+                />
+                {payError && (
+                  <div style={{ fontSize: 12, color: COLORS.primary, marginTop: 8, fontWeight: 600 }}>{payError}</div>
+                )}
+                <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                  <Button onClick={() => { setPaymentExpanded(false); setPayError(""); }} variant="light" size="sm">Cancel</Button>
+                  <Button onClick={submitPayment} variant="primary" size="sm" disabled={paySubmitting} style={{ flex: 1, minWidth: 160 }}>
+                    {paySubmitting ? "Submitting..." : "Submit Payment Reference"}
+                  </Button>
+                </div>
+                <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 10, fontStyle: "italic", lineHeight: 1.5 }}>
+                  Admin verifies within 15 minutes. You'll see the ✓ VERIFIED badge once confirmed.
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
       <Card className="rann-warrior-card" style={{ marginBottom: 24, background: belt.color, color: belt.textColor, borderColor: belt.border, padding: 32 }}>
         <div className="rann-side-by-side" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
           <div className="rann-side-left">
@@ -4851,7 +4962,7 @@ export default function App() {
         {view === "login" && <LoginPage onLogin={handleLogin} onNav={setView} />}
         {view === "forgot-pin" && <ForgotPinPage onLogin={handleLogin} onNav={setView} />}
         {view === "success" && <SuccessPage athlete={athlete} registration={lastRegistration} waitlistEntries={lastWaitlistEntries} batchTokens={lastBatchTokens} onNav={setView} upiId={upiId} />}
-        {view === "dashboard" && athlete && <DashboardPage athlete={athlete} event={event} currentRegistration={myCurrentRegistration} eventResults={eventResults} onNav={setView} allAthletes={allAthletes} myBatchTokens={(allBatches || []).filter((b) => b.phone === athlete.phone && b.event_id === event?.id)} myWaitlist={(allWaitlist || []).filter((w) => w.phone === athlete.phone && w.event_id === event?.id && !w.promoted)} />}
+        {view === "dashboard" && athlete && <DashboardPage athlete={athlete} event={event} currentRegistration={myCurrentRegistration} eventResults={eventResults} onNav={setView} allAthletes={allAthletes} myBatchTokens={(allBatches || []).filter((b) => b.phone === athlete.phone && b.event_id === event?.id)} myWaitlist={(allWaitlist || []).filter((w) => w.phone === athlete.phone && w.event_id === event?.id && !w.promoted)} upiId={upiId} refreshData={refreshData} />}
         {view === "leaderboard" && <LeaderboardPage allAthletes={allAthletes} eventRecords={eventRecords} onNav={setView} currentAthletePhone={athlete?.phone} />}
         {view === "admin-login" && <AdminLogin onLogin={() => { setIsAdminAuthed(true); setView("admin"); }} onCancel={() => setView("home")} />}
         {view === "admin" && isAdminAuthed && <AdminPanel onLogout={() => { setIsAdminAuthed(false); setView("home"); }} refreshData={refreshData} allAthletes={allAthletes} allRegistrations={allRegistrations} allResults={allResults} event={event} upiId={upiId} slotCounts={slotCounts} allWaitlist={allWaitlist} allBatches={allBatches} />}
