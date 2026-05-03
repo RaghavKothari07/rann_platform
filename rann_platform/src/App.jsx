@@ -573,19 +573,48 @@ const UPIQrCode = ({ upiId, amount, name = "Rann League", size = 180 }) => {
   const [dataUrl, setDataUrl] = useState(null);
   useEffect(() => {
     if (!upiId) return;
-    // Static personal-receiver QR — just the VPA, no amount embedded.
-    // Reason: UPI apps (especially PhonePe) now block deep-links that pre-fill
-    // an amount to a non-merchant VPA, treating them as unverified merchant
-    // transactions. By skipping `am=` we get the universal small-business flow:
-    // user scans, sees the recipient, types the amount manually, pays. Works
-    // on every UPI app without any fraud flag.
-    const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}`;
+    // NPCI-spec-compliant non-merchant intent (last attempt before we drop the deep-link entirely):
+    //   pa = payee VPA, pn = payee name, mc = 0000 (no merchant category),
+    //   tr = unique transaction ref (required by spec even for non-merchants),
+    //   tn = transaction note, am = amount, cu = INR.
+    // PhonePe's 2025 anti-fraud is supposed to allow spec-compliant non-merchant
+    // intents through; non-spec ones get blocked. This is option (3) — if this
+    // also fails, we'll switch to QR-only flow.
+    const tr = `RANN${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const tn = "Rann entry fee";
+    const params = [
+      `pa=${encodeURIComponent(upiId)}`,
+      `pn=${encodeURIComponent(name)}`,
+      `mc=0000`,
+      `tr=${encodeURIComponent(tr)}`,
+      `tn=${encodeURIComponent(tn)}`,
+      amount ? `am=${amount}` : null,
+      `cu=INR`,
+    ].filter(Boolean).join("&");
+    const upiLink = `upi://pay?${params}`;
     QRCode.toDataURL(upiLink, { width: size * 2, margin: 1, color: { dark: "#1A1A1A", light: "#FFFFFF" } })
       .then((url) => setDataUrl(url))
       .catch(() => setDataUrl(null));
-  }, [upiId, size]);
+  }, [upiId, amount, name, size]);
   if (!dataUrl) return <div style={{ width: size, height: size, background: "#F5F5F5", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, fontSize: 11, color: COLORS.textGray }}>Generating QR...</div>;
   return <img src={dataUrl} alt="UPI QR" width={size} height={size} style={{ display: "block", borderRadius: 8, border: `2px solid ${COLORS.gold}` }} />;
+};
+
+// Build a NPCI-compliant non-merchant intent URL (used by Open in UPI app buttons)
+const buildUpiLink = (upiId, amount) => {
+  if (!upiId) return "";
+  const tr = `RANN${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const tn = "Rann entry fee";
+  const params = [
+    `pa=${encodeURIComponent(upiId)}`,
+    `pn=${encodeURIComponent("Rann League")}`,
+    `mc=0000`,
+    `tr=${encodeURIComponent(tr)}`,
+    `tn=${encodeURIComponent(tn)}`,
+    amount ? `am=${amount}` : null,
+    `cu=INR`,
+  ].filter(Boolean).join("&");
+  return `upi://pay?${params}`;
 };
 
 const Input = ({ label, value, onChange, placeholder, type = "text", required = false, helpText = "" }) => (
@@ -1911,24 +1940,23 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
               <div style={{ background: COLORS.creamLight, padding: 16, borderRadius: 8, marginBottom: 16 }}>
                 <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2, marginBottom: 12, textAlign: "center" }}>◆ PAY VIA UPI ◆</div>
                 <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
-                  <UPIQrCode upiId={upiId} size={160} />
+                  <UPIQrCode upiId={upiId} amount={confirmedCost} size={160} />
                   <div style={{ flex: "1 1 200px", minWidth: 0, textAlign: "center" }}>
                     <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>SCAN OR PAY TO</div>
                     <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 12, wordBreak: "break-all" }}>{upiId}</div>
-                    <div style={{ background: COLORS.charcoal, padding: "14px 12px", borderRadius: 6, marginBottom: 10, color: COLORS.cream }}>
-                      <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.7, fontWeight: 700, marginBottom: 2 }}>ENTER THIS AMOUNT</div>
-                      <div style={{ fontFamily: "'Cinzel', serif", fontWeight: 700, fontSize: 28, color: COLORS.gold, lineHeight: 1 }}>₹{confirmedCost}</div>
+                    <div style={{ background: "#FFFFFF", padding: 12, borderRadius: 6, fontSize: 14, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}`, marginBottom: 10 }}>
+                      Amount: <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 16 }}>₹{confirmedCost}</span>
                     </div>
                     {upiId && (
-                      <a href={`upi://pay?pa=${encodeURIComponent(upiId)}`}
-                         style={{ display: "inline-block", padding: "10px 18px", background: COLORS.primary, color: COLORS.cream, borderRadius: 6, fontSize: 13, fontWeight: 700, textDecoration: "none", letterSpacing: 0.5 }}>
+                      <a href={buildUpiLink(upiId, confirmedCost)}
+                         style={{ display: "inline-block", padding: "10px 18px", background: COLORS.charcoal, color: COLORS.cream, borderRadius: 6, fontSize: 13, fontWeight: 700, textDecoration: "none", letterSpacing: 0.5 }}>
                         Open in UPI app →
                       </a>
                     )}
                   </div>
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.textGray, marginTop: 12, lineHeight: 1.5, textAlign: "center" }}>
-                  Scan the QR or tap "Open in UPI app" → <strong>type ₹{confirmedCost}</strong> in your UPI app → pay. Slot confirmed once we verify (typically within 15 minutes).
+                  Scan the QR or send ₹{confirmedCost} to the UPI ID above. Slot will be confirmed once we verify the payment (typically within 15 minutes).
                 </div>
                 {waitlistEvents.length > 0 && (
                   <div style={{ fontSize: 12, color: "#7B5500", background: "#FFF4D4", padding: "8px 10px", borderRadius: 4, marginTop: 10, lineHeight: 1.5 }}>
@@ -2234,25 +2262,20 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
             <div style={{ background: "#FFFFFF", color: COLORS.charcoal, padding: 22 }}>
               <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 22, alignItems: "center", marginBottom: 18, flexWrap: "wrap" }}>
                 <div style={{ background: "#FFFFFF", padding: 8, borderRadius: 6, border: `1px solid ${COLORS.borderLight}` }}>
-                  <UPIQrCode upiId={upiId} size={140} />
+                  <UPIQrCode upiId={upiId} amount={currentRegistration.total_cost} size={140} />
                 </div>
                 <div style={{ minWidth: 180 }}>
                   <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>SCAN OR PAY TO</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 12, wordBreak: "break-all" }}>{upiId}</div>
-                  <div style={{ background: COLORS.charcoal, padding: "12px", borderRadius: 6, color: COLORS.cream, marginBottom: 10 }}>
-                    <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.7, fontWeight: 700, marginBottom: 2 }}>ENTER THIS AMOUNT</div>
-                    <div style={{ fontFamily: "'Cinzel', serif", fontWeight: 700, fontSize: 24, color: COLORS.gold, lineHeight: 1 }}>₹{currentRegistration.total_cost}</div>
-                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 10, wordBreak: "break-all" }}>{upiId}</div>
+                  <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>AMOUNT</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif" }}>₹{currentRegistration.total_cost}</div>
                   {upiId && (
-                    <a href={`upi://pay?pa=${encodeURIComponent(upiId)}`}
-                       style={{ display: "inline-block", padding: "8px 14px", background: COLORS.primary, color: COLORS.cream, borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none", letterSpacing: 0.5 }}>
+                    <a href={buildUpiLink(upiId, currentRegistration.total_cost)}
+                       style={{ display: "inline-block", marginTop: 10, padding: "8px 14px", background: COLORS.charcoal, color: COLORS.cream, borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none", letterSpacing: 0.5 }}>
                       Open in UPI app →
                     </a>
                   )}
                 </div>
-              </div>
-              <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: -8, marginBottom: 14, lineHeight: 1.5, fontStyle: "italic" }}>
-                Tip: scan the QR or tap "Open in UPI app" → type the amount manually → pay.
               </div>
               <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: COLORS.charcoal }}>After paying, enter your UPI reference number</div>
