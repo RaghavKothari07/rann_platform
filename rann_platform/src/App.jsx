@@ -1693,15 +1693,20 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
     for (const e of confirmedEvents) confirmedTiers[e] = tiers[e];
     const confirmedCost = confirmedEvents.reduce((sum, e) => sum + (TIERS[tiers[e]]?.entry || 0), 0);
 
-    // Validate: payment ref required only if anything is confirmed
+    // Validate: payment ref required only if anything is confirmed.
+    // Two valid formats:
+    //   1. Razorpay payment ID — starts with "pay_" followed by alphanumerics
+    //   2. UPI UTR/transaction ID — digit-only, 6+ digits
     if (confirmedEvents.length > 0) {
-      const cleanRef = (paymentNote || "").replace(/\D/g, "");
-      if (!cleanRef) {
+      const ref = (paymentNote || "").trim();
+      const isRazorpayId = /^pay_[A-Za-z0-9]+$/.test(ref);
+      const cleanDigits = ref.replace(/\D/g, "");
+      if (!ref) {
         setError("Payment reference is required for confirmed slots. Please pay first, then enter the UTR/transaction ID from your UPI app.");
         return;
       }
-      if (cleanRef.length < 6) {
-        setError("Payment reference must be at least 6 digits (last 6 digits of your UTR / transaction ID).");
+      if (!isRazorpayId && cleanDigits.length < 6) {
+        setError("Payment reference must be at least 6 digits (last 6 digits of your UTR / transaction ID), or a Razorpay payment ID.");
         return;
       }
     }
@@ -2037,11 +2042,11 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
                 {/* ─── PRIMARY: Razorpay button ─── */}
                 <div style={{ background: "linear-gradient(135deg, #FFFFFF 0%, " + COLORS.creamLight + " 100%)", padding: 18, borderRadius: 8, marginBottom: 12, border: `2px solid ${COLORS.gold}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-                    <div>
+                    <div style={{ flex: "1 1 180px" }}>
                       <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2 }}>◆ SECURE PAYMENT ◆</div>
                       <div style={{ fontSize: 13, color: COLORS.charcoal, marginTop: 2 }}>UPI · Cards · NetBanking · Wallets</div>
                     </div>
-                    <div style={{ textAlign: "right" }}>
+                    <div style={{ textAlign: "center", minWidth: 120 }}>
                       <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>AMOUNT</div>
                       <div style={{ fontSize: 26, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", lineHeight: 1 }}>₹{confirmedCost}</div>
                     </div>
@@ -2130,23 +2135,34 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
             )}
 
             {!allWaitlist && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: COLORS.charcoal, marginBottom: 6, letterSpacing: 0.5 }}>
-                  Payment reference / UPI transaction ID <span style={{ color: COLORS.primary }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={paymentNote}
-                  onChange={(e) => setPaymentNote(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                  placeholder="Last 6 digits of UTR or transaction ID"
-                  style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, fontFamily: "inherit", background: "#FAFAF7", color: COLORS.charcoal, WebkitTextFillColor: COLORS.charcoal, boxSizing: "border-box", letterSpacing: 1 }}
-                />
-                <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 4 }}>
-                  Numbers only. After paying, find this in your UPI app's transaction history (UTR / Transaction ID).
+              rzpSuccessRef ? (
+                // Razorpay flow already succeeded — show clean confirmation, hide manual UTR input.
+                <div style={{ marginBottom: 16, background: "#D6F0DC", border: "1px solid #1F7A3A", padding: "12px 14px", borderRadius: 6 }}>
+                  <div style={{ fontSize: 11, color: "#1F7A3A", fontWeight: 700, letterSpacing: 1.5, marginBottom: 4 }}>✓ PAYMENT REFERENCE CAPTURED</div>
+                  <div style={{ fontSize: 13, color: "#1F7A3A", fontFamily: "monospace", wordBreak: "break-all" }}>{rzpSuccessRef}</div>
+                  <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 6, lineHeight: 1.4 }}>
+                    No need to enter manually — admin will verify and your slot will be confirmed.
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: COLORS.charcoal, marginBottom: 6, letterSpacing: 0.5 }}>
+                    Payment reference / UPI transaction ID <span style={{ color: COLORS.primary }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={paymentNote}
+                    onChange={(e) => setPaymentNote(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                    placeholder="Last 6 digits of UTR or transaction ID"
+                    style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, fontFamily: "inherit", background: "#FAFAF7", color: COLORS.charcoal, WebkitTextFillColor: COLORS.charcoal, boxSizing: "border-box", letterSpacing: 1 }}
+                  />
+                  <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 4 }}>
+                    Required if you paid manually via UPI. If you used the "Pay" button above, this is filled in automatically.
+                  </div>
+                </div>
+              )
             )}
 
             <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 16, marginTop: 8 }}>
