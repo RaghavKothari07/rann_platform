@@ -2419,6 +2419,58 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
   const [payRef, setPayRef] = useState("");
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [payError, setPayError] = useState("");
+  // Razorpay flow state for the dashboard payment card
+  const [rzpDashLoading, setRzpDashLoading] = useState(false);
+  const [rzpDashError, setRzpDashError] = useState("");
+  const [rzpDashSuccess, setRzpDashSuccess] = useState(false);
+
+  // Trigger Razorpay flow + auto-verification for waitlist-promoted athletes.
+  const startRazorpayFlow = async () => {
+    setRzpDashError("");
+    setRzpDashLoading(true);
+    try {
+      const result = await openRazorpayCheckout({
+        amount: currentRegistration.total_cost,
+        receipt: `rann_${currentRegistration.phone}_${Date.now()}`,
+        prefill: {
+          name: currentRegistration.name || athlete.name,
+          contact: currentRegistration.phone || athlete.phone,
+        },
+      });
+      // Server-side verify (same endpoint as registration flow)
+      const verifyRes = await fetch("/api/razorpay/verify-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...result,
+          event_id: currentRegistration.event_id,
+          phone: currentRegistration.phone,
+        }),
+      });
+      const verifyData = await verifyRes.json().catch(() => ({}));
+      if (verifyRes.ok && verifyData.verified) {
+        setRzpDashSuccess(true);
+        if (refreshData) await refreshData();
+      } else {
+        // Payment was real but verify failed — fallback to manual flow.
+        // Save the payment_id as note so admin can verify against Razorpay dashboard.
+        const { error: upErr } = await supabase.from("registrations")
+          .update({ payment_note: result.razorpay_payment_id })
+          .eq("event_id", currentRegistration.event_id)
+          .eq("phone", currentRegistration.phone);
+        if (!upErr && refreshData) await refreshData();
+        setRzpDashError("Payment received but auto-verification failed. Admin will verify manually within 15 minutes.");
+      }
+    } catch (err) {
+      if (err.code === "DISMISSED") {
+        setRzpDashError("Payment cancelled. You can try again or use manual UPI below.");
+      } else {
+        setRzpDashError(err.description || err.message || "Payment failed. Please try again.");
+      }
+    } finally {
+      setRzpDashLoading(false);
+    }
+  };
 
   const submitPayment = async () => {
     setPayError("");
@@ -2468,51 +2520,80 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
           </div>
           {paymentExpanded && (
             <div style={{ background: "#FFFFFF", color: COLORS.charcoal, padding: 22 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 22, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-                <div style={{ background: "#FFFFFF", padding: 8, borderRadius: 6, border: `1px solid ${COLORS.borderLight}` }}>
-                  <UPIQrCode upiId={upiId} size={140} />
+              {/* ─── PRIMARY: Razorpay Pay Now button ─── */}
+              {rzpDashSuccess ? (
+                <div style={{ background: "#D6F0DC", color: "#1F7A3A", padding: "14px 16px", borderRadius: 6, fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
+                  ✓ Payment received and verified. Your slot is now confirmed.
                 </div>
-                <div style={{ minWidth: 200, flex: 1 }}>
-                  <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 700, marginBottom: 6 }}>OR PAY TO THIS UPI ID</div>
-                  <div style={{ marginBottom: 12 }}>
-                    <CopyableUpiId upiId={upiId} fontSize={14} />
-                  </div>
-                  <div style={{ background: COLORS.charcoal, padding: "12px 14px", borderRadius: 6, color: COLORS.cream }}>
-                    <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.7, fontWeight: 700, marginBottom: 2 }}>ENTER THIS AMOUNT</div>
-                    <div style={{ fontFamily: "'Cinzel', serif", fontWeight: 700, fontSize: 24, color: COLORS.gold, lineHeight: 1 }}>₹{currentRegistration.total_cost}</div>
-                  </div>
-                </div>
-              </div>
-              <div style={{ background: "#FFFFFF", padding: "10px 12px", borderRadius: 6, fontSize: 11, color: COLORS.charcoal, lineHeight: 1.6, marginBottom: 14, border: `1px solid ${COLORS.borderLight}` }}>
-                <strong>Steps:</strong> Scan QR <em>or</em> tap "Copy" → paste in UPI app → type <strong>₹{currentRegistration.total_cost}</strong> → pay → enter the UPI reference below.
-              </div>
-              <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: COLORS.charcoal }}>After paying, enter your UPI reference number</div>
-                <div style={{ fontSize: 11, color: COLORS.textGray, marginBottom: 10, lineHeight: 1.5 }}>
-                  You'll find this in your UPI app's transaction history (PhonePe, GPay, Paytm). Numeric only, usually 12 digits.
-                </div>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="e.g., 425671298304"
-                  value={payRef}
-                  onChange={(e) => { setPayRef(e.target.value.replace(/\D/g, "").slice(0, 20)); setPayError(""); }}
-                  style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box", letterSpacing: 1 }}
-                />
-                {payError && (
-                  <div style={{ fontSize: 12, color: COLORS.primary, marginTop: 8, fontWeight: 600 }}>{payError}</div>
-                )}
-                <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-                  <Button onClick={() => { setPaymentExpanded(false); setPayError(""); }} variant="light" size="sm">Cancel</Button>
-                  <Button onClick={submitPayment} variant="primary" size="sm" disabled={paySubmitting} style={{ flex: 1, minWidth: 160 }}>
-                    {paySubmitting ? "Submitting..." : "Submit Payment Reference"}
+              ) : (
+                <div style={{ marginBottom: 14 }}>
+                  <Button
+                    onClick={startRazorpayFlow}
+                    variant="primary"
+                    style={{ width: "100%", padding: "14px 20px", fontSize: 15 }}
+                    disabled={rzpDashLoading}
+                  >
+                    {rzpDashLoading ? "Opening checkout..." : `Pay ₹${currentRegistration.total_cost} via Razorpay →`}
                   </Button>
+                  <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 8, textAlign: "center", fontStyle: "italic" }}>
+                    Secured by Razorpay · UPI · Cards · NetBanking · 256-bit encryption
+                  </div>
+                  {rzpDashError && (
+                    <div style={{ fontSize: 12, color: COLORS.primary, marginTop: 10, padding: "8px 10px", background: `${COLORS.primary}10`, borderRadius: 4, lineHeight: 1.5 }}>
+                      {rzpDashError}
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 10, fontStyle: "italic", lineHeight: 1.5 }}>
-                  Admin verifies within 15 minutes. You'll see the ✓ VERIFIED badge once confirmed.
+              )}
+
+              {/* ─── FALLBACK: Manual UPI (collapsed) ─── */}
+              {!rzpDashSuccess && (
+                <details style={{ background: COLORS.creamLight, padding: 12, borderRadius: 6, fontSize: 12, color: COLORS.textGray, marginBottom: 10 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 600, color: COLORS.charcoal, padding: "4px 0" }}>
+                    Or pay manually via UPI →
+                  </summary>
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 14, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+                      <UPIQrCode upiId={upiId} size={120} />
+                      <div style={{ minWidth: 180, flex: 1 }}>
+                        <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1, fontWeight: 700, marginBottom: 6 }}>UPI ID</div>
+                        <div style={{ marginBottom: 10 }}><CopyableUpiId upiId={upiId} fontSize={13} /></div>
+                        <div style={{ background: COLORS.charcoal, padding: "8px 12px", borderRadius: 4, color: COLORS.cream, display: "inline-block" }}>
+                          <span style={{ fontSize: 9, letterSpacing: 1, opacity: 0.7, fontWeight: 700 }}>ENTER ₹{currentRegistration.total_cost}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: COLORS.charcoal, marginTop: 14 }}>After paying, enter your UPI reference number</div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="e.g., 425671298304"
+                      value={payRef}
+                      onChange={(e) => { setPayRef(e.target.value.replace(/\D/g, "").slice(0, 20)); setPayError(""); }}
+                      style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box", letterSpacing: 1 }}
+                    />
+                    {payError && (
+                      <div style={{ fontSize: 12, color: COLORS.primary, marginTop: 8, fontWeight: 600 }}>{payError}</div>
+                    )}
+                    <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+                      <Button onClick={submitPayment} variant="primary" size="sm" disabled={paySubmitting} style={{ flex: 1, minWidth: 160 }}>
+                        {paySubmitting ? "Submitting..." : "Submit Payment Reference"}
+                      </Button>
+                    </div>
+                    <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 8, fontStyle: "italic", lineHeight: 1.5 }}>
+                      Manual UPI payments require admin verification (typically within 15 minutes).
+                    </div>
+                  </div>
+                </details>
+              )}
+
+              {/* Cancel button to close the expanded card */}
+              {!rzpDashSuccess && (
+                <div style={{ textAlign: "center", marginTop: 8 }}>
+                  <Button onClick={() => { setPaymentExpanded(false); setPayError(""); setRzpDashError(""); }} variant="light" size="sm">Cancel</Button>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </Card>
