@@ -2071,12 +2071,12 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
               <div style={{ marginBottom: 16 }}>
                 {/* ─── PRIMARY: Razorpay button ─── */}
                 <div style={{ background: "linear-gradient(135deg, #FFFFFF 0%, " + COLORS.creamLight + " 100%)", padding: 18, borderRadius: 8, marginBottom: 12, border: `2px solid ${COLORS.gold}` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-                    <div style={{ flex: "1 1 180px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
+                    <div style={{ flex: "1 1 180px", textAlign: "center" }}>
                       <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2 }}>◆ SECURE PAYMENT ◆</div>
                       <div style={{ fontSize: 13, color: COLORS.charcoal, marginTop: 2 }}>UPI · Cards · NetBanking · Wallets</div>
                     </div>
-                    <div style={{ textAlign: "center", minWidth: 120 }}>
+                    <div style={{ flex: "1 1 120px", textAlign: "center" }}>
                       <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>AMOUNT</div>
                       <div style={{ fontSize: 26, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", lineHeight: 1 }}>₹{confirmedCost}</div>
                     </div>
@@ -2163,35 +2163,24 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
               </div>
             )}
 
-            {!allWaitlist && (
-              rzpSuccessRef ? (
-                // Razorpay flow already succeeded — show clean confirmation, hide manual UTR input.
-                <div style={{ marginBottom: 16, background: "#D6F0DC", border: "1px solid #1F7A3A", padding: "12px 14px", borderRadius: 6 }}>
-                  <div style={{ fontSize: 11, color: "#1F7A3A", fontWeight: 700, letterSpacing: 1.5, marginBottom: 4 }}>✓ PAYMENT REFERENCE CAPTURED</div>
-                  <div style={{ fontSize: 13, color: "#1F7A3A", fontFamily: "monospace", wordBreak: "break-all" }}>{rzpSuccessRef}</div>
-                  <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 6, lineHeight: 1.4 }}>
-                    No need to enter manually — admin will verify and your slot will be confirmed.
-                  </div>
+            {!allWaitlist && !rzpSuccessRef && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: COLORS.charcoal, marginBottom: 6, letterSpacing: 0.5 }}>
+                  Payment reference / UPI transaction ID <span style={{ color: COLORS.primary }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                  placeholder="Last 6 digits of UTR or transaction ID"
+                  style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, fontFamily: "inherit", background: "#FAFAF7", color: COLORS.charcoal, WebkitTextFillColor: COLORS.charcoal, boxSizing: "border-box", letterSpacing: 1 }}
+                />
+                <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 4 }}>
+                  Required if you paid manually via UPI. If you used the "Pay" button above, this is filled in automatically.
                 </div>
-              ) : (
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: COLORS.charcoal, marginBottom: 6, letterSpacing: 0.5 }}>
-                    Payment reference / UPI transaction ID <span style={{ color: COLORS.primary }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={paymentNote}
-                    onChange={(e) => setPaymentNote(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                    placeholder="Last 6 digits of UTR or transaction ID"
-                    style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, fontFamily: "inherit", background: "#FAFAF7", color: COLORS.charcoal, WebkitTextFillColor: COLORS.charcoal, boxSizing: "border-box", letterSpacing: 1 }}
-                  />
-                  <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 4 }}>
-                    Required if you paid manually via UPI. If you used the "Pay" button above, this is filled in automatically.
-                  </div>
-                </div>
-              )
+              </div>
             )}
 
             <div style={{ borderTop: `1px solid ${COLORS.borderLight}`, paddingTop: 16, marginTop: 8 }}>
@@ -2231,9 +2220,9 @@ const SuccessPage = ({ athlete, registration, waitlistEntries = [], batchTokens 
   const warriorId = formatWarriorId(athlete?.warrior_id);
   const founding = isFoundingWarrior(athlete?.warrior_id);
   return (
-  <div style={{ maxWidth: 520, margin: "40px auto", textAlign: "center" }}>
-    <div style={{ fontSize: 64, marginBottom: 8 }}>{onlyWaitlist ? "⏳" : "⚔️"}</div>
-    <div style={{ fontSize: 14, color: COLORS.gold, letterSpacing: 3, fontWeight: 700, marginBottom: 6 }}>
+  <div style={{ maxWidth: 520, margin: "40px auto", padding: "0 16px", textAlign: "center" }}>
+    <div style={{ fontSize: 56, marginBottom: 16, lineHeight: 1 }}>{onlyWaitlist ? "⏳" : "⚔️"}</div>
+    <div style={{ fontSize: 13, color: COLORS.gold, letterSpacing: 3, fontWeight: 700, marginBottom: 8 }}>
       {onlyWaitlist ? "ON THE WAITLIST" : "YOU'RE IN"}
     </div>
     <div style={{ fontSize: 30, fontFamily: "'Cinzel', serif", fontWeight: 600, marginBottom: 16, color: COLORS.charcoal }}>
