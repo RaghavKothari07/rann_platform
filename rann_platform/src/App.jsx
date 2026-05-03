@@ -119,6 +119,14 @@ const validatePin = (pin) => /^\d{4}$/.test(pin || "");
 // Read helpers handle BOTH shapes for backward compatibility.
 // ============================================================
 const EVENT_LOWER_IS_BETTER = { "100m Sprint": true };
+
+// Unit suffix for displaying personal bests / event values on dashboards & leaderboards.
+const EVENT_UNITS = {
+  "Push-ups": "reps",
+  "Squats": "reps",
+  "Plank": "min",
+  "100m Sprint": "sec",
+};
 const getPBValue = (pbField) => {
   if (pbField === null || pbField === undefined || pbField === "") return null;
   if (typeof pbField === "object") return pbField.value ?? null;
@@ -131,6 +139,18 @@ const getPBDate = (pbField) => {
 const getPBPrevious = (pbField) => {
   if (pbField && typeof pbField === "object") return { value: pbField.previous_value ?? null, date: pbField.previous_date || null };
   return { value: null, date: null };
+};
+
+// Returns a display string with unit, e.g. "47 reps" or "1:35 min" or "13.4 sec".
+// Accepts either a raw value (string|number) or a personal_bests JSON field.
+const formatEventValue = (eventName, valueOrField) => {
+  if (valueOrField === null || valueOrField === undefined || valueOrField === "") return "—";
+  const raw = (typeof valueOrField === "object" && !Array.isArray(valueOrField))
+    ? getPBValue(valueOrField)
+    : valueOrField;
+  if (raw === null || raw === undefined || raw === "") return "—";
+  const unit = EVENT_UNITS[eventName] || "";
+  return unit ? `${raw} ${unit}` : String(raw);
 };
 // Parse event value to a comparable number. "1:35" plank → 95 seconds; "14.2" sprint → 14.2; "47" reps → 47.
 const parseEventValue = (eventName, raw) => {
@@ -2255,11 +2275,10 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
                         </div>
                       )}
                     </div>
-                    <div style={{ flex: "0 0 auto", textAlign: "center", minWidth: 70 }}>
+                    <div style={{ flex: "0 0 auto", textAlign: "center", minWidth: 90 }}>
                       {hasPB ? (
-                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: 22, fontWeight: 700, color: COLORS.primary, lineHeight: 1 }}>
-                          {value}
-                          {ev === "100m Sprint" && <span style={{ fontSize: 14, opacity: 0.7 }}>s</span>}
+                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: 22, fontWeight: 700, color: COLORS.primary, lineHeight: 1, whiteSpace: "nowrap" }}>
+                          {value}<span style={{ fontSize: 12, opacity: 0.7, fontWeight: 600, marginLeft: 4 }}>{EVENT_UNITS[ev] || ""}</span>
                         </div>
                       ) : (
                         <div style={{ fontSize: 13, color: COLORS.textGray, fontStyle: "italic" }}>—</div>
@@ -2278,7 +2297,7 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
                       )}
                       {hasPB && prev.value !== null && (
                         <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 4 }}>
-                          Prev: {prev.value}{prev.date ? ` · ${formatPBDateShort(prev.date)}` : ""}
+                          Prev: {prev.value}{EVENT_UNITS[ev] ? ` ${EVENT_UNITS[ev]}` : ""}{prev.date ? ` · ${formatPBDateShort(prev.date)}` : ""}
                         </div>
                       )}
                       {!hasPB && (
@@ -2404,7 +2423,7 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
                 {er.results?.map((r, j) => (
                   <div key={j} style={{ fontSize: 13, color: COLORS.textGray, padding: "2px 0", display: "flex", justifyContent: "space-between" }}>
                     <span>{r.event} · {r.tier}</span>
-                    <span>{r.position && <span style={{ marginRight: 8 }}>#{r.position}</span>}{r.value && <span>{r.value}</span>}</span>
+                    <span>{r.position && <span style={{ marginRight: 8 }}>#{r.position}</span>}{r.value && <span>{r.value}{EVENT_UNITS[r.event] ? ` ${EVENT_UNITS[r.event]}` : ""}</span>}</span>
                   </div>
                 ))}
               </div>
@@ -2657,7 +2676,9 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                     <div style={{ fontSize: 18, fontFamily: "'Cinzel', serif", fontWeight: 700 }}>{currentEventRecord.holder}</div>
                     <div style={{ fontSize: 11, opacity: 0.7 }}>{eventFilter} · Set on {currentEventRecord.set_on || "—"}</div>
                   </div>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.gold, fontFamily: "'Cinzel', serif" }}>{currentEventRecord.value}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: COLORS.gold, fontFamily: "'Cinzel', serif", whiteSpace: "nowrap" }}>
+                    {currentEventRecord.value}<span style={{ fontSize: 14, opacity: 0.75, fontWeight: 600, marginLeft: 6 }}>{EVENT_UNITS[eventFilter] || ""}</span>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -2701,7 +2722,9 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                         {formatWarriorId(a.warrior_id)}{entry.date ? ` · ${entry.date}` : ""}
                       </div>
                     </div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", flexShrink: 0 }}>{entry.raw}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", flexShrink: 0, whiteSpace: "nowrap" }}>
+                      {entry.raw}<span style={{ fontSize: 11, opacity: 0.7, fontWeight: 600, marginLeft: 4 }}>{EVENT_UNITS[eventFilter] || ""}</span>
+                    </div>
                   </div>
                 );
               })}
@@ -2721,7 +2744,9 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                 <div style={{ fontSize: 18, fontFamily: "'Cinzel', serif", fontWeight: 700, marginBottom: 12 }}>{ev}</div>
                 {rec ? (
                   <>
-                    <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif" }}>{rec.value}</div>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", whiteSpace: "nowrap" }}>
+                      {rec.value}<span style={{ fontSize: 16, opacity: 0.7, fontWeight: 600, marginLeft: 6 }}>{EVENT_UNITS[ev] || ""}</span>
+                    </div>
                     <div style={{ fontSize: 13, color: COLORS.charcoal, marginTop: 4, fontWeight: 600 }}>👑 {rec.holder}</div>
                     {rec.set_on && <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 2 }}>Set {rec.set_on}</div>}
                   </>
@@ -3025,20 +3050,44 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
         const tiers = reg?.tiers || {};
         for (const r of results) if (!tiers[r.event]) tiers[r.event] = "Bronze";
 
+        // Idempotency: if results exist for this event×phone, REPLACE rather than ADD
+        const { data: existingResults } = await supabase.from("event_results")
+          .select("*").eq("event_id", event.id).eq("phone", phone).maybeSingle();
+        const isReUpload = !!existingResults;
+        const previousDayPoints = isReUpload ? (existingResults.total_points || 0) : 0;
+
         const dayPoints = calculatePoints(results, tiers);
-        const newTotal = (athlete.total_points || 0) + dayPoints;
-        const newAttended = (athlete.events_attended || 0) + 1;
+        const newTotal = (athlete.total_points || 0) - previousDayPoints + dayPoints;
+        const newAttended = isReUpload
+          ? (athlete.events_attended || 0)
+          : (athlete.events_attended || 0) + 1;
         const personalBests = athlete.personal_bests || {};
         const eventDateStr2 = event?.event_date || new Date().toISOString().slice(0, 10);
         for (const r of results) {
           const oldField = personalBests[r.event];
+          // If this PB was set by the same event being re-uploaded, compare against the pre-event PB
+          const wasSetByThisEvent = oldField && typeof oldField === "object" && oldField.event_id === event.id;
+          const effectiveOldField = wasSetByThisEvent
+            ? (oldField.previous_value !== null && oldField.previous_value !== undefined
+                ? { value: oldField.previous_value, date: oldField.previous_date }
+                : null)
+            : oldField;
           // CSV "isPB" field provided manually; if blank, auto-detect
-          const finalIsPB = r.isPB ? true : isNewPB(r.event, r.value, oldField);
+          const finalIsPB = r.isPB ? true : isNewPB(r.event, r.value, effectiveOldField);
           if (finalIsPB && r.value) {
             personalBests[r.event] = {
               value: r.value, date: eventDateStr2, event_id: event.id,
-              previous_value: getPBValue(oldField), previous_date: getPBDate(oldField),
+              previous_value: getPBValue(effectiveOldField), previous_date: getPBDate(effectiveOldField),
             };
+          } else if (wasSetByThisEvent) {
+            if (oldField.previous_value !== null && oldField.previous_value !== undefined) {
+              personalBests[r.event] = {
+                value: oldField.previous_value, date: oldField.previous_date,
+                event_id: null, previous_value: null, previous_date: null,
+              };
+            } else {
+              delete personalBests[r.event];
+            }
           }
           if (r.value && r.position === 1) {
             recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
@@ -3254,10 +3303,14 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
                     c.font = { name: "Arial", italic: isFirstEvent, size: 9, color: { argb: isFirstEvent ? "FF999999" : C.charcoal } };
                     c.alignment = { horizontal: "center", vertical: "middle" };
                   } else if (i === 7 || i === 8 || i === 9) {
-                    // Yellow input cells
+                    // Yellow input cells (Position, Value, PB)
                     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.yellow } };
                     c.font = { name: "Arial", bold: true, size: 10, color: { argb: C.charcoal } };
                     c.alignment = { horizontal: "center", vertical: "middle" };
+                    // CRITICAL: force Text format on the Value cell (i === 8) so Excel
+                    // doesn't auto-interpret "4:00" as 4:00 AM (h:m:s) and store it as
+                    // a fraction of a day. With "@" (Text) format, "4:00" stays "4:00".
+                    if (i === 8) c.numFmt = "@";
                   } else {
                     c.font = { name: "Arial", size: 10, color: { argb: C.charcoal } };
                     c.alignment = { horizontal: "center", vertical: "middle" };
@@ -3281,6 +3334,7 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
                   c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } };
                   c.border = allBorders;
                   c.alignment = { horizontal: "center", vertical: "middle" };
+                  if (col === 9) c.numFmt = "@"; // Value column → Text
                 }
                 ws.getRow(r).height = 18;
                 r++;
@@ -3408,10 +3462,25 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
         if (pbOverrideRaw.startsWith("y")) pbOverride = true;
         else if (pbOverrideRaw.startsWith("n")) pbOverride = false;
 
+        // Value column normalization — handle Excel's silent "h:m:s → fraction of a day" conversion.
+        // If user typed "4:00" and Excel's cell wasn't text-formatted, it would store as 4/24 = 0.16666...
+        // We detect this by Plank specifically getting a numeric value < 1, and reconstruct the mm:ss string.
+        const rawVal = row[8];
+        let value;
+        if (evName === "Plank" && typeof rawVal === "number" && rawVal > 0 && rawVal < 1) {
+          // rawVal is fraction of a day. Convert to seconds, then mm:ss.
+          const totalSec = Math.round(rawVal * 86400);
+          const mins = Math.floor(totalSec / 60);
+          const secs = totalSec % 60;
+          value = `${mins}:${String(secs).padStart(2, "0")}`;
+        } else {
+          value = String(rawVal || "").trim();
+        }
+
         if (!byPhone[phoneStr]) byPhone[phoneStr] = [];
         byPhone[phoneStr].push({
           event: evName, position,
-          value: String(row[8] || "").trim(),
+          value,
           pbOverride, tier, gender_category: gender,
         });
         validRows++;
@@ -3430,22 +3499,37 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
         const tiers = reg?.tiers || {};
         for (const r of results) if (!tiers[r.event]) tiers[r.event] = r.tier || "Bronze";
 
+        // ─── Idempotency: if results already exist for this event×phone, REPLACE not ADD ───
+        const { data: existingResults } = await supabase.from("event_results")
+          .select("*").eq("event_id", event.id).eq("phone", phone).maybeSingle();
+        const isReUpload = !!existingResults;
+        const previousDayPoints = isReUpload ? (existingResults.total_points || 0) : 0;
+
         // Auto-detect PB for each result (with manual override taking precedence)
         const personalBests = athlete.personal_bests || {};
         for (const r of results) {
           const oldField = personalBests[r.event];
+          // On re-upload: if the old PB was set by THIS event, "old" should be the previous_value stored back then,
+          // not the value being overwritten now. Otherwise we'd compare new value to old value of same event.
+          const wasSetByThisEvent = oldField && typeof oldField === "object" && oldField.event_id === event.id;
+          const effectiveOldField = wasSetByThisEvent
+            ? (oldField.previous_value !== null && oldField.previous_value !== undefined
+                ? { value: oldField.previous_value, date: oldField.previous_date }
+                : null)
+            : oldField;
+
           let isPB;
           if (r.pbOverride !== null) {
             isPB = r.pbOverride; // user said Y or N — respect it
           } else {
-            isPB = isNewPB(r.event, r.value, oldField); // auto-detect
+            isPB = isNewPB(r.event, r.value, effectiveOldField); // auto-detect against pre-event PB
           }
           r.isPB = isPB; // store for points calc
 
-          // If PB, update structured personal_bests with previous-value tracking
           if (isPB && r.value) {
-            const oldVal = getPBValue(oldField);
-            const oldDate = getPBDate(oldField);
+            // Roll forward, keeping the original pre-event PB as previous_value
+            const oldVal = getPBValue(effectiveOldField);
+            const oldDate = getPBDate(effectiveOldField);
             personalBests[r.event] = {
               value: r.value,
               date: eventDateStr,
@@ -3453,12 +3537,28 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
               previous_value: oldVal,
               previous_date: oldDate,
             };
+          } else if (wasSetByThisEvent) {
+            // Re-upload changed values such that this is no longer a PB → revert to the pre-event PB
+            if (oldField.previous_value !== null && oldField.previous_value !== undefined) {
+              personalBests[r.event] = {
+                value: oldField.previous_value,
+                date: oldField.previous_date,
+                event_id: null,
+                previous_value: null,
+                previous_date: null,
+              };
+            } else {
+              delete personalBests[r.event];
+            }
           }
         }
 
         const dayPoints = calculatePoints(results, tiers);
-        const newTotal = (athlete.total_points || 0) + dayPoints;
-        const newAttended = (athlete.events_attended || 0) + 1;
+        // Net change: subtract whatever this event contributed last time, then add fresh.
+        const newTotal = (athlete.total_points || 0) - previousDayPoints + dayPoints;
+        const newAttended = isReUpload
+          ? (athlete.events_attended || 0)         // already counted on first upload
+          : (athlete.events_attended || 0) + 1;
         for (const r of results) {
           if (r.value && r.position === 1) {
             recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
@@ -3477,7 +3577,7 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       for (const rec of Object.values(recordUpdates)) {
         await supabase.from("event_records").upsert(rec, { onConflict: "event_name" });
       }
-      setCsvStatus(`✓ Updated ${updated} athlete${updated !== 1 ? "s" : ""}, skipped ${skipped} (not registered or invalid). Leaderboard refreshed.`);
+      setCsvStatus(`✓ Updated ${updated} athlete${updated !== 1 ? "s" : ""}, skipped ${skipped} (not registered or invalid). Leaderboard refreshed. Safe to re-upload — totals replace, not add.`);
       refreshData();
     } catch (err) {
       setCsvStatus(`✗ Error: ${err.message}`);
