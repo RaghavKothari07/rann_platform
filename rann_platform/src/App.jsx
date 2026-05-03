@@ -1909,9 +1909,15 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
                   <div style={{ flex: "1 1 200px", minWidth: 0, textAlign: "center" }}>
                     <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>SCAN OR PAY TO</div>
                     <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: COLORS.charcoal, marginBottom: 12, wordBreak: "break-all" }}>{upiId}</div>
-                    <div style={{ background: "#FFFFFF", padding: 12, borderRadius: 6, fontSize: 14, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}` }}>
+                    <div style={{ background: "#FFFFFF", padding: 12, borderRadius: 6, fontSize: 14, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}`, marginBottom: 10 }}>
                       Amount: <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 16 }}>₹{confirmedCost}</span>
                     </div>
+                    {upiId && (
+                      <a href={`upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent("Rann League")}&am=${confirmedCost}&cu=INR`}
+                         style={{ display: "inline-block", padding: "10px 18px", background: COLORS.charcoal, color: COLORS.cream, borderRadius: 6, fontSize: 13, fontWeight: 700, textDecoration: "none", letterSpacing: 0.5 }}>
+                        Open in UPI app →
+                      </a>
+                    )}
                   </div>
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.textGray, marginTop: 12, lineHeight: 1.5, textAlign: "center" }}>
