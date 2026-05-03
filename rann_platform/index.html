@@ -15,6 +15,8 @@
          browser (Instagram, WhatsApp, FB, etc.), it shows a friendly
          "Open in Safari" page IMMEDIATELY — no blank white screen
          even if the React bundle later fails to load.
+         When this fires, it sets sessionStorage flag rann_html_gate_shown
+         so the React-level gate stays silent (otherwise user sees two gates).
          ============================================================ -->
     <style>
       html, body { margin: 0; padding: 0; background: #F5F1E8; color: #1A1A1A; -webkit-text-size-adjust: 100%; }
@@ -112,6 +114,10 @@
           }
 
           if (!detected) return;
+
+          // Mark that the HTML gate is handling this — so the React gate stays silent
+          // (prevents the user seeing two near-identical gate pages stacked).
+          try { sessionStorage.setItem("rann_html_gate_shown", "1"); } catch (e) {}
 
           function showGate() {
             var gate = document.getElementById("rann-inapp-gate");

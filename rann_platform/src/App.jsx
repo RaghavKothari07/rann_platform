@@ -4459,8 +4459,13 @@ const InAppBrowserGate = ({ children }) => {
   // This prevents flicker and ensures the gate shows even if the underlying app crashes.
   const [detected] = useState(() => {
     try {
-      if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("rann_bypass_inapp") === "1") {
-        return null; // user already bypassed in this session
+      if (typeof sessionStorage !== "undefined") {
+        // User explicitly bypassed (clicked "Continue Anyway") on either gate
+        if (sessionStorage.getItem("rann_bypass_inapp") === "1") return null;
+        // The pre-React HTML gate in index.html already handled detection.
+        // If it ran (whether the user bypassed or stayed), don't show this gate again
+        // — otherwise the user sees two near-identical gate screens stacked.
+        if (sessionStorage.getItem("rann_html_gate_shown") === "1") return null;
       }
     } catch (e) {}
     return detectInAppBrowser();
