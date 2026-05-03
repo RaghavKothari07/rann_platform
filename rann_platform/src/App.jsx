@@ -1637,10 +1637,11 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
   // Suggest default gender from athlete's gender field
   const defaultGender = (gender || "").toLowerCase().startsWith("f") ? "Women" : (gender || "").toLowerCase().startsWith("m") ? "Men" : "Mixed";
   const [paymentNote, setPaymentNote] = useState("");
-  // Razorpay flow state (Phase 1: open modal, log success in console)
+  // Razorpay flow state
   const [rzpLoading, setRzpLoading] = useState(false);
   const [rzpError, setRzpError] = useState("");
   const [rzpSuccessRef, setRzpSuccessRef] = useState(""); // razorpay payment id, used as the payment_note
+  const [rzpFullResponse, setRzpFullResponse] = useState(null); // full {payment_id, order_id, signature} for server verification
   const [waiverAccepted, setWaiverAccepted] = useState(false);
   const [medicalOk, setMedicalOk] = useState(false);
   const [error, setError] = useState("");
@@ -1762,6 +1763,35 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
         };
         const { error: rErr } = await supabase.from("registrations").upsert(registration, { onConflict: "event_id,phone" });
         if (rErr) throw rErr;
+
+        // ─── Phase 2: server-side Razorpay signature verification ───
+        // If the user paid via the Razorpay modal, we have the full response in
+        // rzpFullResponse. Send it to /api/razorpay/verify-payment which validates
+        // the signature with our key_secret and flips payment_status to "verified".
+        // If verification fails, registration stays "pending" and admin verifies manually.
+        if (rzpFullResponse && rzpFullResponse.razorpay_payment_id) {
+          try {
+            const verifyRes = await fetch("/api/razorpay/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...rzpFullResponse,
+                event_id: event.id,
+                phone: cleanPhone,
+              }),
+            });
+            const verifyData = await verifyRes.json().catch(() => ({}));
+            if (!verifyRes.ok || !verifyData.verified) {
+              console.warn("Razorpay verify failed (registration stays pending for admin review):", verifyData);
+            } else {
+              console.log("Razorpay payment verified — registration auto-flipped to verified");
+            }
+          } catch (verifyErr) {
+            // Non-fatal: payment is real (modal succeeded), registration is saved as pending,
+            // admin will verify manually if auto-verify fails. Log and continue.
+            console.warn("Razorpay verify call failed:", verifyErr);
+          }
+        }
 
         // Re-fetch latest batch_assignments to avoid stale state when many register simultaneously
         const { data: freshBatches } = await supabase.from("batch_assignments").select("*").eq("event_id", event.id);
@@ -2070,12 +2100,11 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
                               contact: phone.replace(/\D/g, ""),
                             },
                           });
-                          // Phase 1: just store the payment id as the reference, admin verifies manually.
-                          // Phase 2 will add server-side signature verification + auto-flip to verified.
+                          // Phase 2: store full response so we can call /api/razorpay/verify-payment
+                          // after the registration is saved.
                           setRzpSuccessRef(result.razorpay_payment_id);
+                          setRzpFullResponse(result);
                           setPaymentNote(result.razorpay_payment_id);
-                          // Auto-advance: trigger the existing complete-registration flow
-                          // by simulating the user submitting the payment ref.
                           console.log("Razorpay success:", result);
                         } catch (err) {
                           if (err.code === "DISMISSED") {
