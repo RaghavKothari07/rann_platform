@@ -573,12 +573,10 @@ const UPIQrCode = ({ upiId, amount, name = "Rann League", size = 180 }) => {
   const [dataUrl, setDataUrl] = useState(null);
   useEffect(() => {
     if (!upiId) return;
-    // NPCI's anti-fraud heuristic flags any UPI link that pre-fills BOTH
-    // amount (am=) AND a payee name (pn=) that doesn't match the VPA's
-    // account holder — banks treat those as unverified-merchant transactions
-    // and decline with "security reasons." Solution: skip pn= and let the
-    // user's UPI app fetch the real account holder name via VPA lookup.
-    const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}${amount ? `&am=${amount}` : ""}&cu=INR`;
+    // Minimal UPI link: just VPA + amount. Skipping pn= and cu= because
+    // those parameters trigger merchant-fraud heuristics in some bank/app
+    // combos. INR is the default currency anyway.
+    const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}${amount ? `&am=${amount}` : ""}`;
     QRCode.toDataURL(upiLink, { width: size * 2, margin: 1, color: { dark: "#1A1A1A", light: "#FFFFFF" } })
       .then((url) => setDataUrl(url))
       .catch(() => setDataUrl(null));
@@ -1918,7 +1916,7 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
                       Amount: <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 16 }}>₹{confirmedCost}</span>
                     </div>
                     {upiId && (
-                      <a href={`upi://pay?pa=${encodeURIComponent(upiId)}&am=${confirmedCost}&cu=INR`}
+                      <a href={`upi://pay?pa=${encodeURIComponent(upiId)}&am=${confirmedCost}`}
                          style={{ display: "inline-block", padding: "10px 18px", background: COLORS.charcoal, color: COLORS.cream, borderRadius: 6, fontSize: 13, fontWeight: 700, textDecoration: "none", letterSpacing: 0.5 }}>
                         Open in UPI app →
                       </a>
@@ -2240,7 +2238,7 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
                   <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>AMOUNT</div>
                   <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif" }}>₹{currentRegistration.total_cost}</div>
                   {upiId && (
-                    <a href={`upi://pay?pa=${encodeURIComponent(upiId)}&am=${currentRegistration.total_cost}&cu=INR`}
+                    <a href={`upi://pay?pa=${encodeURIComponent(upiId)}&am=${currentRegistration.total_cost}`}
                        style={{ display: "inline-block", marginTop: 10, padding: "8px 14px", background: COLORS.charcoal, color: COLORS.cream, borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none", letterSpacing: 0.5 }}>
                       Open in UPI app →
                     </a>
