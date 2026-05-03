@@ -2521,7 +2521,25 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
     return ranked.slice(0, 10);
   }, [allAthletes, eventFilter, genderFilter]);
 
-  const currentEventRecord = eventRecords.find((r) => r.event_name === eventFilter);
+  // Record holder card:
+  //   - "All" filter → use the all-time global record from event_records table
+  //   - "Men"/"Women" filter → derive from the top of the filtered eventLeaderboard,
+  //     so the card shows the best within that gender, not the global best.
+  const currentEventRecord = useMemo(() => {
+    if (genderFilter === "All") {
+      return eventRecords.find((r) => r.event_name === eventFilter) || null;
+    }
+    if (eventLeaderboard.length === 0) return null;
+    const top = eventLeaderboard[0];
+    return {
+      event_name: eventFilter,
+      value: top.raw,
+      holder: top.athlete.name,
+      phone: top.athlete.phone,
+      set_on: top.date || null,
+      _filtered: true, // flag so the UI can label it as gender-specific
+    };
+  }, [eventRecords, eventFilter, genderFilter, eventLeaderboard]);
 
   // ─── Wall of Warriors (founders only, sorted by warrior_id) ──
   const founders = useMemo(() => {
@@ -2691,7 +2709,9 @@ const LeaderboardPage = ({ allAthletes, eventRecords, onNav, currentAthletePhone
                 <SwordsEmblem size={100} color={COLORS.gold} />
               </div>
               <div style={{ position: "relative", zIndex: 1 }}>
-                <div style={{ fontSize: 10, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>👑 ALL-TIME RECORD HOLDER</div>
+                <div style={{ fontSize: 10, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>
+                  👑 {currentEventRecord._filtered ? `BEST IN ${genderFilter.toUpperCase()}` : "ALL-TIME RECORD HOLDER"}
+                </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
                   <div>
                     <div style={{ fontSize: 18, fontFamily: "'Cinzel', serif", fontWeight: 700 }}>{currentEventRecord.holder}</div>
@@ -3110,8 +3130,18 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
               delete personalBests[r.event];
             }
           }
-          if (r.value && r.position === 1) {
-            recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
+          if (r.value && r.position) {
+            // Track best in batch comparison (handles non-1st batch winners and multi-batch events)
+            const existing = recordUpdates[r.event];
+            const newNumeric = parseEventValue(r.event, r.value);
+            const existingNumeric = existing ? parseEventValue(r.event, existing.value) : null;
+            const lowerIsBetter = !!EVENT_LOWER_IS_BETTER[r.event];
+            const isBetterThanInBatch = existingNumeric === null
+              ? true
+              : (lowerIsBetter ? newNumeric < existingNumeric : newNumeric > existingNumeric);
+            if (newNumeric !== null && !isNaN(newNumeric) && isBetterThanInBatch) {
+              recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
+            }
           }
         }
 
@@ -3129,6 +3159,16 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       }
 
       for (const rec of Object.values(recordUpdates)) {
+        // Only overwrite event_records if the new value beats the existing all-time record.
+        const { data: existingRec } = await supabase.from("event_records")
+          .select("*").eq("event_name", rec.event_name).maybeSingle();
+        if (existingRec && existingRec.value) {
+          const existingNumeric = parseEventValue(rec.event_name, existingRec.value);
+          const newNumeric = parseEventValue(rec.event_name, rec.value);
+          const lowerIsBetter = !!EVENT_LOWER_IS_BETTER[rec.event_name];
+          const isBetter = lowerIsBetter ? newNumeric < existingNumeric : newNumeric > existingNumeric;
+          if (!isBetter) continue;
+        }
         await supabase.from("event_records").upsert(rec, { onConflict: "event_name" });
       }
 
@@ -3586,8 +3626,19 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
           ? (athlete.events_attended || 0)         // already counted on first upload
           : (athlete.events_attended || 0) + 1;
         for (const r of results) {
-          if (r.value && r.position === 1) {
-            recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
+          if (r.value && r.position) {
+            // Track THIS athlete's best for this event in this batch upload, regardless of position.
+            // We'll later compare across all batches AND against the existing record before overwriting.
+            const existing = recordUpdates[r.event];
+            const newNumeric = parseEventValue(r.event, r.value);
+            const existingNumeric = existing ? parseEventValue(r.event, existing.value) : null;
+            const lowerIsBetter = !!EVENT_LOWER_IS_BETTER[r.event];
+            const isBetterThanInBatch = existingNumeric === null
+              ? true
+              : (lowerIsBetter ? newNumeric < existingNumeric : newNumeric > existingNumeric);
+            if (newNumeric !== null && !isNaN(newNumeric) && isBetterThanInBatch) {
+              recordUpdates[r.event] = { event_name: r.event, value: r.value, holder: athlete.name, phone, set_on: event.event_date };
+            }
           }
         }
         await supabase.from("athletes").update({
@@ -3601,6 +3652,16 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
         updated++;
       }
       for (const rec of Object.values(recordUpdates)) {
+        // Only overwrite event_records if the new value beats the existing all-time record.
+        const { data: existingRec } = await supabase.from("event_records")
+          .select("*").eq("event_name", rec.event_name).maybeSingle();
+        if (existingRec && existingRec.value) {
+          const existingNumeric = parseEventValue(rec.event_name, existingRec.value);
+          const newNumeric = parseEventValue(rec.event_name, rec.value);
+          const lowerIsBetter = !!EVENT_LOWER_IS_BETTER[rec.event_name];
+          const isBetter = lowerIsBetter ? newNumeric < existingNumeric : newNumeric > existingNumeric;
+          if (!isBetter) continue; // existing record holds
+        }
         await supabase.from("event_records").upsert(rec, { onConflict: "event_name" });
       }
       setCsvStatus(`✓ Updated ${updated} athlete${updated !== 1 ? "s" : ""}, skipped ${skipped} (not registered or invalid). Leaderboard refreshed. Safe to re-upload — totals replace, not add.`);
