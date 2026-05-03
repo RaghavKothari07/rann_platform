@@ -3484,16 +3484,21 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
         else if (pbOverrideRaw.startsWith("n")) pbOverride = false;
 
         // Value column normalization — handle Excel's silent "h:m:s → fraction of a day" conversion.
-        // If user typed "4:00" and Excel's cell wasn't text-formatted, it would store as 4/24 = 0.16666...
-        // We detect this by Plank specifically getting a numeric value < 1, and reconstruct the mm:ss string.
+        // If user typed "4:00" (meaning 4 min 0 sec), Excel parsed it as 4:00:00 (4 hours)
+        // and stored as 4/24 = 0.16666... of a day. We recover the user's intent here:
+        //   fraction × 24 = the leading number the user typed (the minutes)
+        //   the decimal remainder × 60 = the seconds.
+        // NOTE: this means we treat their input as mm:ss, not hh:mm. A 4-hour plank would
+        // be ridiculous; users only ever mean minutes when typing colons in plank.
         const rawVal = row[8];
         let value;
         if (evName === "Plank" && typeof rawVal === "number" && rawVal > 0 && rawVal < 1) {
-          // rawVal is fraction of a day. Convert to seconds, then mm:ss.
-          const totalSec = Math.round(rawVal * 86400);
-          const mins = Math.floor(totalSec / 60);
-          const secs = totalSec % 60;
-          value = `${mins}:${String(secs).padStart(2, "0")}`;
+          const leading = rawVal * 24;        // minutes
+          const mins = Math.floor(leading);
+          const secs = Math.round((leading - mins) * 60);
+          // Handle 60s rollover edge case (e.g., 0.99999 → 23:60 → 24:00)
+          if (secs === 60) value = `${mins + 1}:00`;
+          else value = `${mins}:${String(secs).padStart(2, "0")}`;
         } else {
           value = String(rawVal || "").trim();
         }
