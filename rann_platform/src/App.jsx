@@ -5133,9 +5133,9 @@ export default function App() {
           .rann-hero-cta { width: 100% !important; display: flex !important; justify-content: center !important; }
           .rann-hero-cta > button, .rann-hero-cta > div { width: 100% !important; max-width: 320px; }
 
-          /* Top nav: compact buttons so Home/Leaderboard/Profile/Logout fit on one row on mobile */
-          .rann-topnav-buttons { gap: 2px !important; flex-wrap: nowrap !important; }
-          .rann-topnav-buttons > button { padding: 6px 8px !important; font-size: 11px !important; letter-spacing: 0 !important; margin-left: 4px !important; }
+          /* Top nav: compact-but-readable buttons so Home/Leaderboard/Profile/Logout fit on one row on mobile */
+          .rann-topnav-buttons { gap: 4px !important; flex-wrap: nowrap !important; }
+          .rann-topnav-buttons > button { padding: 8px 11px !important; font-size: 13px !important; letter-spacing: 0.3px !important; margin-left: 4px !important; font-weight: 600 !important; }
 
           /* Welcome card halves on mobile: stack as a clean column (icon hidden, text on top, button full-width below) */
           .rann-welcome-icon { display: none !important; }
