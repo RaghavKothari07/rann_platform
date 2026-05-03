@@ -5133,9 +5133,13 @@ export default function App() {
           .rann-hero-cta { width: 100% !important; display: flex !important; justify-content: center !important; }
           .rann-hero-cta > button, .rann-hero-cta > div { width: 100% !important; max-width: 320px; }
 
-          /* Top nav: compact-but-readable buttons so Home/Leaderboard/Profile/Logout fit on one row on mobile */
+          /* Top nav: maximum readable button size that still fits Home/Leaderboard/Profile/Logout (or Login/Register) on one row */
           .rann-topnav-buttons { gap: 4px !important; flex-wrap: nowrap !important; }
-          .rann-topnav-buttons > button { padding: 8px 11px !important; font-size: 13px !important; letter-spacing: 0.3px !important; margin-left: 4px !important; font-weight: 600 !important; }
+          .rann-topnav-buttons > button { padding: 9px 12px !important; font-size: 14px !important; letter-spacing: 0.3px !important; margin-left: 4px !important; font-weight: 600 !important; }
+          /* On very narrow phones (< 360px), tighten further so Logout doesn't overflow */
+          @media (max-width: 360px) {
+            .rann-topnav-buttons > button { padding: 8px 9px !important; font-size: 12.5px !important; }
+          }
 
           /* Welcome card halves on mobile: stack as a clean column (icon hidden, text on top, button full-width below) */
           .rann-welcome-icon { display: none !important; }
