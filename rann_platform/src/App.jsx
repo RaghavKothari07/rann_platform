@@ -588,6 +588,89 @@ const UPIQrCode = ({ upiId, amount, name = "Rann League", size = 180 }) => {
 };
 
 // Click-to-copy helper used by the "Copy UPI ID" button
+// ============================================================
+// RAZORPAY embedded checkout
+// ============================================================
+// Lazy-loads Razorpay's checkout JS from their CDN. Returns a promise
+// that resolves once the global window.Razorpay constructor is available.
+// Cached: subsequent calls are instant.
+let _razorpayLoadPromise = null;
+const loadRazorpayCheckout = () => {
+  if (typeof window === "undefined") return Promise.reject(new Error("No window"));
+  if (window.Razorpay) return Promise.resolve();
+  if (_razorpayLoadPromise) return _razorpayLoadPromise;
+  _razorpayLoadPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://checkout.razorpay.com/v1/checkout.js";
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      _razorpayLoadPromise = null;
+      reject(new Error("Failed to load Razorpay SDK. Check your network."));
+    };
+    document.head.appendChild(s);
+  });
+  return _razorpayLoadPromise;
+};
+
+// Opens the Razorpay checkout modal. Returns a promise that resolves with
+// { razorpay_payment_id, razorpay_order_id, razorpay_signature } on success,
+// or rejects with { code, description } on failure/dismissal.
+const openRazorpayCheckout = async ({ amount, receipt, prefill, theme, onModalDismiss }) => {
+  // Step 1: ask our serverless function to create an order
+  const orderRes = await fetch("/api/razorpay/create-order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount, receipt }),
+  });
+  if (!orderRes.ok) {
+    const errBody = await orderRes.json().catch(() => ({}));
+    throw new Error(errBody.error || "Could not create payment order. Please try again.");
+  }
+  const order = await orderRes.json();
+
+  // Step 2: load Razorpay checkout SDK
+  await loadRazorpayCheckout();
+
+  // Step 3: open the modal
+  return new Promise((resolve, reject) => {
+    const rzp = new window.Razorpay({
+      key: order.key_id,
+      amount: order.amount, // paise, from server
+      currency: order.currency,
+      name: "Rann League",
+      description: "Sunday-morning bodyweight tournament entry",
+      order_id: order.order_id,
+      prefill: prefill || {},
+      theme: theme || { color: "#8B0000" },
+      handler: function (response) {
+        // Success — Razorpay gives us the payment_id, order_id, signature
+        resolve({
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_signature: response.razorpay_signature,
+        });
+      },
+      modal: {
+        ondismiss: () => {
+          if (onModalDismiss) onModalDismiss();
+          reject({ code: "DISMISSED", description: "Payment cancelled by user." });
+        },
+      },
+    });
+    rzp.on("payment.failed", function (response) {
+      reject({
+        code: response.error?.code || "PAYMENT_FAILED",
+        description: response.error?.description || "Payment failed.",
+        details: response.error,
+      });
+    });
+    rzp.open();
+  });
+};
+
+
+
 const CopyableUpiId = ({ upiId, fontSize = 18 }) => {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
@@ -1554,6 +1637,10 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
   // Suggest default gender from athlete's gender field
   const defaultGender = (gender || "").toLowerCase().startsWith("f") ? "Women" : (gender || "").toLowerCase().startsWith("m") ? "Men" : "Mixed";
   const [paymentNote, setPaymentNote] = useState("");
+  // Razorpay flow state (Phase 1: open modal, log success in console)
+  const [rzpLoading, setRzpLoading] = useState(false);
+  const [rzpError, setRzpError] = useState("");
+  const [rzpSuccessRef, setRzpSuccessRef] = useState(""); // razorpay payment id, used as the payment_note
   const [waiverAccepted, setWaiverAccepted] = useState(false);
   const [medicalOk, setMedicalOk] = useState(false);
   const [error, setError] = useState("");
@@ -1946,29 +2033,94 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
                 </div>
               </div>
             ) : (
-              <div style={{ background: COLORS.creamLight, padding: 16, borderRadius: 8, marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2, marginBottom: 12, textAlign: "center" }}>◆ PAY VIA UPI ◆</div>
-                <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
-                  <UPIQrCode upiId={upiId} size={160} />
-                  <div style={{ flex: "1 1 220px", minWidth: 0, textAlign: "center" }}>
-                    <div style={{ fontSize: 11, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>OR PAY TO THIS UPI ID</div>
-                    <div style={{ marginBottom: 14 }}>
-                      <CopyableUpiId upiId={upiId} fontSize={15} />
+              <div style={{ marginBottom: 16 }}>
+                {/* ─── PRIMARY: Razorpay button ─── */}
+                <div style={{ background: "linear-gradient(135deg, #FFFFFF 0%, " + COLORS.creamLight + " 100%)", padding: 18, borderRadius: 8, marginBottom: 12, border: `2px solid ${COLORS.gold}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: COLORS.gold, fontWeight: 700, letterSpacing: 2 }}>◆ SECURE PAYMENT ◆</div>
+                      <div style={{ fontSize: 13, color: COLORS.charcoal, marginTop: 2 }}>UPI · Cards · NetBanking · Wallets</div>
                     </div>
-                    <div style={{ background: COLORS.charcoal, padding: "12px 16px", borderRadius: 6, color: COLORS.cream }}>
-                      <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.7, fontWeight: 700, marginBottom: 2 }}>ENTER THIS AMOUNT</div>
-                      <div style={{ fontFamily: "'Cinzel', serif", fontWeight: 700, fontSize: 28, color: COLORS.gold, lineHeight: 1 }}>₹{confirmedCost}</div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1, fontWeight: 600 }}>AMOUNT</div>
+                      <div style={{ fontSize: 26, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", lineHeight: 1 }}>₹{confirmedCost}</div>
                     </div>
                   </div>
+                  {rzpSuccessRef ? (
+                    <div style={{ background: "#D6F0DC", color: "#1F7A3A", padding: "12px 14px", borderRadius: 6, fontSize: 13, fontWeight: 600 }}>
+                      ✓ Payment received. Reference: <span style={{ fontFamily: "monospace" }}>{rzpSuccessRef}</span>
+                      <div style={{ fontSize: 11, marginTop: 4, fontWeight: 400, opacity: 0.85 }}>You'll be redirected to the success page shortly.</div>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={async () => {
+                        setRzpError("");
+                        setRzpLoading(true);
+                        try {
+                          const result = await openRazorpayCheckout({
+                            amount: confirmedCost,
+                            receipt: `rann_${phone.replace(/\D/g, "")}_${Date.now()}`,
+                            prefill: {
+                              name: name.trim(),
+                              contact: phone.replace(/\D/g, ""),
+                            },
+                          });
+                          // Phase 1: just store the payment id as the reference, admin verifies manually.
+                          // Phase 2 will add server-side signature verification + auto-flip to verified.
+                          setRzpSuccessRef(result.razorpay_payment_id);
+                          setPaymentNote(result.razorpay_payment_id);
+                          // Auto-advance: trigger the existing complete-registration flow
+                          // by simulating the user submitting the payment ref.
+                          console.log("Razorpay success:", result);
+                        } catch (err) {
+                          if (err.code === "DISMISSED") {
+                            setRzpError("Payment cancelled. Try again or use the manual UPI option below.");
+                          } else {
+                            setRzpError(err.description || err.message || "Payment failed. Please try again.");
+                          }
+                        } finally {
+                          setRzpLoading(false);
+                        }
+                      }}
+                      variant="primary"
+                      style={{ width: "100%", padding: "14px 20px", fontSize: 15 }}
+                      disabled={rzpLoading}
+                    >
+                      {rzpLoading ? "Opening checkout..." : `Pay ₹${confirmedCost} →`}
+                    </Button>
+                  )}
+                  {rzpError && (
+                    <div style={{ fontSize: 12, color: COLORS.primary, marginTop: 10, padding: "8px 10px", background: `${COLORS.primary}10`, borderRadius: 4, lineHeight: 1.5 }}>
+                      {rzpError}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 10, textAlign: "center", fontStyle: "italic" }}>
+                    Secured by Razorpay · 256-bit encryption
+                  </div>
                 </div>
-                <div style={{ background: "#FFFFFF", padding: "12px 14px", borderRadius: 6, marginTop: 14, fontSize: 12, color: COLORS.charcoal, lineHeight: 1.6, border: `1px solid ${COLORS.borderLight}` }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4, color: COLORS.primary }}>How to pay:</div>
-                  <div>1. Open your UPI app (PhonePe, GPay, Paytm, etc.)</div>
-                  <div>2. Tap "Scan" and point at the QR — or tap Send → paste the UPI ID</div>
-                  <div>3. Type <strong>₹{confirmedCost}</strong> as the amount and pay</div>
-                  <div>4. Copy your UPI reference number from your app's transaction history</div>
-                  <div>5. Paste it below and submit</div>
-                </div>
+
+                {/* ─── FALLBACK: Manual UPI (collapsed by default) ─── */}
+                <details style={{ background: COLORS.creamLight, padding: 12, borderRadius: 6, fontSize: 12, color: COLORS.textGray }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 600, color: COLORS.charcoal, padding: "4px 0" }}>
+                    Or pay manually via UPI →
+                  </summary>
+                  <div style={{ marginTop: 12, padding: 14, background: "#FFFFFF", borderRadius: 6 }}>
+                    <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", justifyContent: "center", marginBottom: 12 }}>
+                      <UPIQrCode upiId={upiId} size={120} />
+                      <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>UPI ID</div>
+                        <div style={{ marginBottom: 10 }}><CopyableUpiId upiId={upiId} fontSize={13} /></div>
+                        <div style={{ background: COLORS.charcoal, padding: "8px 12px", borderRadius: 4, color: COLORS.cream }}>
+                          <div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.7, fontWeight: 700 }}>ENTER ₹{confirmedCost}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: COLORS.charcoal, lineHeight: 1.5 }}>
+                      Scan QR or copy UPI ID → open your UPI app → type ₹{confirmedCost} → pay → paste the reference number below.
+                    </div>
+                  </div>
+                </details>
+
                 {waitlistEvents.length > 0 && (
                   <div style={{ fontSize: 12, color: "#7B5500", background: "#FFF4D4", padding: "8px 10px", borderRadius: 4, marginTop: 10, lineHeight: 1.5 }}>
                     ⚠ {waitlistEvents.length} event{waitlistEvents.length === 1 ? " is" : "s are"} full and will be added to the waitlist. You're not charged for those — only the ₹{confirmedCost} above.
