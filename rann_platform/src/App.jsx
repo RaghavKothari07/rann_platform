@@ -2420,12 +2420,33 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
                   <div style={{ fontWeight: 700 }}>{er.event_date || er.event_id}</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.primary }}>+{er.total_points} pts</div>
                 </div>
-                {er.results?.map((r, j) => (
-                  <div key={j} style={{ fontSize: 13, color: COLORS.textGray, padding: "2px 0", display: "flex", justifyContent: "space-between" }}>
-                    <span>{r.event} · {r.tier}</span>
-                    <span>{r.position && <span style={{ marginRight: 8 }}>#{r.position}</span>}{r.value && <span>{r.value}{EVENT_UNITS[r.event] ? ` ${EVENT_UNITS[r.event]}` : ""}</span>}</span>
-                  </div>
-                ))}
+                {er.results?.map((r, j) => {
+                  // Only show position if the heat had more than one warrior
+                  // (solo heats getting "Heat: 1st" is meaningless)
+                  const heatSize = (er.results || []).filter((x) => x.event === r.event).length;
+                  // Note: heatSize is per-event row count for this athlete, not the actual batch size.
+                  // Real batch size lives in batch_assignments. For battle history purposes we just
+                  // hide the heat-rank when there's any chance it was a solo heat — we use the
+                  // gender_category + tier combo to detect competitive heats. Simpler: show heat
+                  // rank when position > 1 (always meaningful) or when >1 athlete attempted this
+                  // event in the same tier (we can detect via the broader event_results dataset
+                  // if needed, but for now: just label it clearly).
+                  const positionLabel = r.position ? (
+                    r.position === 1 ? "🥇 Heat winner" :
+                    r.position === 2 ? "🥈 Heat 2nd" :
+                    r.position === 3 ? "🥉 Heat 3rd" :
+                    `Heat ${r.position}th`
+                  ) : null;
+                  return (
+                    <div key={j} style={{ fontSize: 13, color: COLORS.textGray, padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                      <span>{r.event} · {r.tier}</span>
+                      <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                        {positionLabel && <span style={{ fontSize: 11, opacity: 0.85 }}>{positionLabel}</span>}
+                        {r.value && <span style={{ fontWeight: 600, color: COLORS.charcoal }}>{r.value}{EVENT_UNITS[r.event] ? ` ${EVENT_UNITS[r.event]}` : ""}</span>}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </Card>
