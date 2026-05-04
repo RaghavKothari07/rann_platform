@@ -3283,6 +3283,7 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
   const [csvStatus, setCsvStatus] = useState("");
   const [eventDate, setEventDate] = useState(event?.event_date || "");
   const [eventVenue, setEventVenue] = useState(event?.venue || "");
+  const [eventStartTime, setEventStartTime] = useState(event?.start_time || "");
   const [eventStatus, setEventStatus] = useState(event?.status || "open");
   // Convert ISO timestamp from DB to "YYYY-MM-DDTHH:mm" for datetime-local input (in user's local TZ)
   const isoToLocalInput = (iso) => {
@@ -3300,9 +3301,10 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
   useEffect(() => {
     setEventDate(event?.event_date || "");
     setEventVenue(event?.venue || "");
+    setEventStartTime(event?.start_time || "");
     setEventStatus(event?.status || "open");
     setEventDeadlineLocal(isoToLocalInput(event?.registration_deadline_at));
-  }, [event?.id, event?.event_date, event?.venue, event?.status, event?.registration_deadline_at]);
+  }, [event?.id, event?.event_date, event?.venue, event?.start_time, event?.status, event?.registration_deadline_at]);
 
   const verifyPayment = async (eventId, phone) => {
     await supabase.from("registrations").update({ payment_status: "verified", verified_at: new Date().toISOString() }).eq("event_id", eventId).eq("phone", phone);
@@ -3469,7 +3471,7 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
       if (!isNaN(d.getTime())) deadlineIso = d.toISOString();
     }
     const { error } = await supabase.from("events").update({
-      event_date: eventDate, venue: eventVenue, status: eventStatus,
+      event_date: eventDate, venue: eventVenue, start_time: eventStartTime || null, status: eventStatus,
       registration_deadline_at: deadlineIso,
     }).eq("id", event.id);
     if (error) { alert("Save failed: " + error.message); return; }
@@ -4522,6 +4524,7 @@ const AdminPanel = ({ onLogout, refreshData, allAthletes, allRegistrations, even
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Current Event Configuration</div>
           <Input label="Event Date (display text)" value={eventDate} onChange={setEventDate} placeholder="e.g., Sunday, May 18, 2026" helpText="What athletes see on homepage. Free text — write it however you want it to appear." />
           <Input label="Venue" value={eventVenue} onChange={setEventVenue} placeholder="e.g., Central Park, Jaipur" />
+          <Input label="Start Time" value={eventStartTime} onChange={setEventStartTime} placeholder="e.g., 6:30 AM" helpText="What athletes see on homepage. Free text — write it however you want it to appear." />
 
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
