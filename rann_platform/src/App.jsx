@@ -921,14 +921,14 @@ const HomePage = ({ event, athlete, onNav, leaderboardPreview }) => (
       <SectionHeader title="The Four Trials" subtitle="Sunday morning · 5-warrior heats" centered />
       <div className="rann-event-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14, marginTop: 24 }}>
         {[
-          { name: "Push-ups", spec: "60 sec · max reps", icon: "💪", desc: "Chest to block" },
-          { name: "Squats", spec: "90 sec · max reps", icon: "🏋", desc: "Hip below knee" },
-          { name: "Plank", spec: "Max hold time", icon: "⏱", desc: "Forearm · straight" },
-          { name: "100m Sprint", spec: "Fastest wins", icon: "⚡", desc: "Standing start" },
+          { name: "Push-ups", spec: "60 sec · max reps", icon: "/icons/pushup.png", desc: "Chest to block" },
+          { name: "Squats", spec: "90 sec · max reps", icon: "/icons/squats.png", desc: "Hip below knee" },
+          { name: "Plank", spec: "Max hold time", icon: "/icons/plank.png", desc: "Forearm · straight" },
+          { name: "100m Sprint", spec: "Fastest wins", icon: "/icons/sprint.png", desc: "Standing start" },
         ].map((e, i) => (
           <Card key={e.name} variant="parchment" style={{ textAlign: "center", padding: 24, position: "relative", overflow: "hidden", transition: "transform 0.2s" }}>
             <div style={{ position: "absolute", top: -10, right: -10, width: 60, height: 60, borderRadius: "50%", background: `${COLORS.primary}10`, pointerEvents: "none" }} />
-            <div style={{ fontSize: 32, marginBottom: 8, position: "relative", zIndex: 1 }}>{e.icon}</div>
+            <img src={e.icon} alt={e.name} style={{ width: 64, height: 64, objectFit: "contain", marginBottom: 8, position: "relative", zIndex: 1, display: "block", marginLeft: "auto", marginRight: "auto" }} />
             <div style={{ fontSize: 11, color: COLORS.gold, letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>EVENT {i + 1}</div>
             <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: "'Cinzel', serif", letterSpacing: 1, marginBottom: 8 }}>
               {e.name.toUpperCase()}
