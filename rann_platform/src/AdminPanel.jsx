@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import ExcelJS from "https://esm.sh/exceljs@4.4.0";
 
-import { supabase, COLORS, TIERS, EVENTS, Button, Card, Input } from "./RannPlatform.jsx";
+import { supabase, COLORS, TIERS, EVENTS, Button, Card, Input } from "./shared.jsx";
 
 // ============================================================
 // ADMIN PANEL — registrations, results CSV import, Excel export, event mgmt
