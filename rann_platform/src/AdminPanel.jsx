@@ -8,7 +8,33 @@ import React, { useState, useEffect, useMemo } from "react";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import ExcelJS from "https://esm.sh/exceljs@4.4.0";
 
-import { supabase, COLORS, TIERS, EVENTS, Button, Card, Input, StatCard } from "./shared.jsx";
+import {
+  Button,
+  COLORS,
+  Card,
+  EVENTS,
+  Input,
+  StatCard,
+  TIERS,
+  calculatePoints,
+  formatPBDateShort,
+  formatPhone,
+  formatToken,
+  formatWarriorId,
+  getBelt,
+  getDeadlineInfo,
+  getPBDate,
+  getPBValue,
+  getSlotColor,
+  getSlotInfo,
+  isFoundingWarrior,
+  isNewPB,
+  isRegistrationOpen,
+  nextBatchSlot,
+  parseEventValue,
+  snapshotAthleteRanks,
+  supabase
+} from "./shared.jsx";
 
 // ============================================================
 // ADMIN PANEL — registrations, results CSV import, Excel export, event mgmt

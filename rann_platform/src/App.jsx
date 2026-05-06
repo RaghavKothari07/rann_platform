@@ -1,6 +1,63 @@
 import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import QRCode from "https://esm.sh/qrcode@1.5.3";
-import { supabase, supabaseEnabled, COLORS, TIERS, EVENTS, Button, Card, Input, StatCard } from "./shared.jsx";
+import {
+  supabase,
+  supabaseEnabled,
+  COLORS,
+  TIERS,
+  EVENTS,
+  Button,
+  Card,
+  Input,
+  StatCard,
+  BATCH_SIZE,
+  BELTS,
+  EVENT_CODES,
+  EVENT_LOWER_IS_BETTER,
+  EVENT_UNITS,
+  GENDER_CATEGORIES,
+  GENDER_COLORS,
+  GENDER_LETTERS,
+  MAX_PER_SLOT,
+  TIER_LETTERS,
+  _fromHex,
+  _toHex,
+  assignCompetitionRanks,
+  calculatePoints,
+  computePBImprovement,
+  formatDeadlineDisplay,
+  formatEventValue,
+  formatPBDateShort,
+  formatPhone,
+  formatToken,
+  formatWarriorId,
+  generateSalt,
+  getBelt,
+  getDeadlineInfo,
+  getEventDateStatus,
+  getNextBelt,
+  getPBDate,
+  getPBPrevious,
+  getPBValue,
+  getRankMovement,
+  getSlotColor,
+  getSlotInfo,
+  hashPin,
+  isFoundingWarrior,
+  isNewPB,
+  isRegistrationOpen,
+  nextBatchSlot,
+  normalizeGender,
+  parseEventValue,
+  renderGenderBadge,
+  slotKey,
+  snapshotAthleteRanks,
+  sortAthletesByStanding,
+  standingTied,
+  validatePhone,
+  validatePin,
+  verifyPin
+} from "./shared.jsx";
 
 // AdminPanel is heavy (~1300 lines + XLSX + ExcelJS dependencies, total ~800KB).
 // Lazy-loaded so public users (the 95% case) never download it.
@@ -16,402 +73,6 @@ const WHATSAPP_COMMUNITY_URL = "https://chat.whatsapp.com/I7eGvUhn3GuEPu1mbk5fB0
 const INSTAGRAM_URL = "https://instagram.com/rann.league";
 
 
-// Capacity: 5 batches of 5 athletes per (event × tier) = 25 hard cap
-const MAX_PER_SLOT = 25;
-
-const BELTS = [
-  { name: "White", min: 0, color: "#FFFFFF", border: "#999999", textColor: "#1A1A1A" },
-  { name: "Blue", min: 250, color: "#1F4E79", border: "#1F4E79", textColor: "#FFFFFF" },
-  { name: "Purple", min: 750, color: "#6B2D8F", border: "#6B2D8F", textColor: "#FFFFFF" },
-  { name: "Brown", min: 2000, color: "#6B4423", border: "#6B4423", textColor: "#FFFFFF" },
-  { name: "Black", min: 5000, color: "#1A1A1A", border: "#1A1A1A", textColor: "#FFFFFF" },
-];
-
-// ============================================================
-// HELPERS
-// ============================================================
-const getBelt = (points) => {
-  let belt = BELTS[0];
-  for (const b of BELTS) if (points >= b.min) belt = b;
-  return belt;
-};
-
-const getNextBelt = (points) => {
-  for (const b of BELTS) if (points < b.min) return b;
-  return null;
-};
-
-const formatPhone = (p) => {
-  const digits = (p || "").replace(/\D/g, "");
-  if (digits.length === 10) return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
-  return p;
-};
-
-const validatePhone = (p) => /^\d{10}$/.test((p || "").replace(/\D/g, ""));
-
-// ============================================================
-// PIN HASHING — PBKDF2-SHA256 via Web Crypto API
-// Stored: pin_salt (hex) and pin_hash (hex). 100k iterations.
-// ============================================================
-const _toHex = (buf) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-const _fromHex = (hex) => {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-  return bytes;
-};
-const generateSalt = () => {
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return _toHex(arr);
-};
-const hashPin = async (pin, saltHex) => {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(pin), { name: "PBKDF2" }, false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: _fromHex(saltHex), iterations: 100000, hash: "SHA-256" },
-    keyMaterial, 256
-  );
-  return _toHex(bits);
-};
-const verifyPin = async (pin, saltHex, expectedHashHex) => {
-  if (!saltHex || !expectedHashHex) return false;
-  const computed = await hashPin(pin, saltHex);
-  return computed === expectedHashHex;
-};
-const validatePin = (pin) => /^\d{4}$/.test(pin || "");
-
-// ============================================================
-// PERSONAL BEST HELPERS
-// Old format: personal_bests = { "Push-ups": 47 }
-// New format: personal_bests = { "Push-ups": { value: 47, date: "2026-04-13", event_id: "event_001", previous_value: null, previous_date: null } }
-// Read helpers handle BOTH shapes for backward compatibility.
-// ============================================================
-const EVENT_LOWER_IS_BETTER = { "100m Sprint": true };
-
-// Unit suffix for displaying personal bests / event values on dashboards & leaderboards.
-const EVENT_UNITS = {
-  "Push-ups": "reps",
-  "Squats": "reps",
-  "Plank": "min",
-  "100m Sprint": "sec",
-};
-const getPBValue = (pbField) => {
-  if (pbField === null || pbField === undefined || pbField === "") return null;
-  if (typeof pbField === "object") return pbField.value ?? null;
-  return pbField;
-};
-const getPBDate = (pbField) => {
-  if (pbField && typeof pbField === "object") return pbField.date || null;
-  return null;
-};
-const getPBPrevious = (pbField) => {
-  if (pbField && typeof pbField === "object") return { value: pbField.previous_value ?? null, date: pbField.previous_date || null };
-  return { value: null, date: null };
-};
-
-// Returns a display string with unit, e.g. "47 reps" or "1:35 min" or "13.4 sec".
-// Accepts either a raw value (string|number) or a personal_bests JSON field.
-const formatEventValue = (eventName, valueOrField) => {
-  if (valueOrField === null || valueOrField === undefined || valueOrField === "") return "—";
-  const raw = (typeof valueOrField === "object" && !Array.isArray(valueOrField))
-    ? getPBValue(valueOrField)
-    : valueOrField;
-  if (raw === null || raw === undefined || raw === "") return "—";
-  const unit = EVENT_UNITS[eventName] || "";
-  return unit ? `${raw} ${unit}` : String(raw);
-};
-// Parse event value to a comparable number. "1:35" plank → 95 seconds; "14.2" sprint → 14.2; "47" reps → 47.
-const parseEventValue = (eventName, raw) => {
-  const s = String(raw ?? "").trim();
-  if (!s) return null;
-  if (eventName === "Plank" && s.includes(":")) {
-    const parts = s.split(":").map((p) => parseFloat(p));
-    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts[0] * 60 + parts[1];
-  }
-  const cleaned = s.replace(/[^\d.]/g, "");
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? null : n;
-};
-const isNewPB = (eventName, newValueRaw, oldPBField) => {
-  const newN = parseEventValue(eventName, newValueRaw);
-  if (newN === null) return false;
-  const oldRaw = getPBValue(oldPBField);
-  const oldN = parseEventValue(eventName, oldRaw);
-  if (oldN === null) return true; // first record = always PB
-  if (EVENT_LOWER_IS_BETTER[eventName]) return newN < oldN;
-  return newN > oldN;
-};
-const formatPBDateShort = (dateStr) => {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return String(dateStr);
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-};
-// Compute improvement string between new and old PB values (for dashboard display)
-const computePBImprovement = (eventName, newValue, oldValue) => {
-  if (oldValue === null || oldValue === undefined) return null;
-  const newN = parseEventValue(eventName, newValue);
-  const oldN = parseEventValue(eventName, oldValue);
-  if (newN === null || oldN === null) return null;
-  const delta = newN - oldN;
-  if (EVENT_LOWER_IS_BETTER[eventName]) {
-    if (delta < 0) return `${Math.abs(delta).toFixed(1)}s faster`;
-    return null;
-  }
-  if (delta > 0) {
-    if (eventName === "Plank") return `+${delta.toFixed(1)}s`;
-    return `+${delta} more`;
-  }
-  return null;
-};
-
-
-// Warrior ID — display "RANN-0042" from numeric column.
-// Athletes 1-100 get a "Founding Warrior" badge.
-const formatWarriorId = (id) => {
-  if (id === null || id === undefined || isNaN(id)) return null;
-  return `RANN-${String(id).padStart(4, "0")}`;
-};
-const isFoundingWarrior = (id) => id !== null && id !== undefined && Number(id) <= 100;
-
-
-// Small colored badge for gender — used on leaderboard rows.
-// Aesthetic on-brand colors: deep indigo for men, wine-rose for women.
-const renderGenderBadge = (gender, size = 18) => {
-  const v = (gender || "").toLowerCase();
-  const baseStyle = {
-    display: "inline-flex", alignItems: "center", justifyContent: "center",
-    width: size, height: size, borderRadius: "50%",
-    color: "#FFFFFF",
-    fontSize: Math.round(size * 0.65),
-    fontWeight: 700, lineHeight: 1, flexShrink: 0,
-    fontFamily: "system-ui, -apple-system, sans-serif",
-  };
-  if (v === "men" || v === "male" || v === "m") {
-    return <span style={{ ...baseStyle, background: "#1E3A8A" }} title="Men">♂</span>;
-  }
-  if (v === "women" || v === "female" || v === "f") {
-    return <span style={{ ...baseStyle, background: "#9D174D" }} title="Women">♀</span>;
-  }
-  return null;
-};
-
-// Normalize gender string from DB to canonical "Men" | "Women" | null.
-// Handles legacy "Male"/"Female", single-letter "M"/"F", current "Men"/"Women",
-// and anything weird like " male ", "MEN", "femaIe" (typo'd L), "boy"/"girl", etc.
-const normalizeGender = (gender) => {
-  if (gender === null || gender === undefined) return null;
-  const v = String(gender).toLowerCase().trim();
-  if (!v) return null;
-  // Exact matches (fast path)
-  if (v === "men" || v === "male" || v === "m" || v === "boy" || v === "man") return "Men";
-  if (v === "women" || v === "female" || v === "f" || v === "girl" || v === "woman") return "Women";
-  // Substring fallback (catches "Male ", "FEMALE", etc.)
-  // Important: check female/women first because "female" contains "male"
-  if (v.includes("female") || v.includes("women") || v.includes("woman")) return "Women";
-  if (v.includes("male") || v.includes("men") || v.includes("man")) return "Men";
-  return null;
-};
-
-
-// ============================================================
-// RANK MOVEMENT (▲ / ▼ / NEW indicators on the leaderboard)
-// ============================================================
-
-// Standard sort used everywhere — points DESC, events_attended DESC, then warrior_id ASC
-// as final stable tiebreaker so ranks dont jump around when DB returns rows in different order.
-const sortAthletesByStanding = (athletes) =>
-  [...athletes].sort((a, b) => {
-    if ((b.total_points || 0) !== (a.total_points || 0)) return (b.total_points || 0) - (a.total_points || 0);
-    if ((b.events_attended || 0) !== (a.events_attended || 0)) return (b.events_attended || 0) - (a.events_attended || 0);
-    return (a.warrior_id || 999999) - (b.warrior_id || 999999);
-  });
-
-// Standard competition ranking ("1224" / "1334"): tied athletes share a rank, next rank skips.
-// Pass `isTied(prev, curr)` — return true if curr should share prev's rank.
-// Returns array of { ...item, _rank } in the same order it was passed in (assumes already sorted).
-const assignCompetitionRanks = (sortedItems, isTied) => {
-  const result = [];
-  let lastRank = 0;
-  for (let i = 0; i < sortedItems.length; i++) {
-    const item = sortedItems[i];
-    let rank;
-    if (i === 0) rank = 1;
-    else if (isTied(sortedItems[i - 1], item)) rank = lastRank;       // tied with previous
-    else rank = i + 1;                                                 // not tied → ordinal position
-    lastRank = rank;
-    result.push({ ...item, _rank: rank });
-  }
-  return result;
-};
-
-// Standing-tied for overall leaderboard: same points AND same events_attended (warrior_id is just stable order, not a ranking signal)
-const standingTied = (a, b) =>
-  (a.total_points || 0) === (b.total_points || 0) &&
-  (a.events_attended || 0) === (b.events_attended || 0);
-
-// Returns rank movement vs previous standings:
-//   { type: "up"|"down"|"same"|"new", delta?: number }
-const getRankMovement = (currentRank, previousRank) => {
-  if (previousRank === null || previousRank === undefined) return { type: "new" };
-  if (currentRank < previousRank) return { type: "up", delta: previousRank - currentRank };
-  if (currentRank > previousRank) return { type: "down", delta: currentRank - previousRank };
-  return { type: "same" };
-};
-
-// Snapshot — call BEFORE importing new event results so we capture
-// the "before" ranks. Uses standard competition ranking (ties share a rank).
-const snapshotAthleteRanks = async (allAthletes) => {
-  const sorted = sortAthletesByStanding(allAthletes);
-  const ranked = assignCompetitionRanks(sorted, standingTied);
-  const now = new Date().toISOString();
-  // Parallel updates — fine for current scale (<200 athletes).
-  // If we ever cross ~500, switch to a single bulk RPC.
-  await Promise.all(ranked.map((a) =>
-    supabase.from("athletes").update({
-      previous_rank: a._rank,
-      previous_rank_at: now,
-    }).eq("phone", a.phone)
-  ));
-};
-
-
-// Registration deadline helpers
-const isRegistrationOpen = (event) => {
-  if (!event) return false;
-  if (event.status !== "open") return false;
-  if (event.registration_deadline_at) {
-    const deadline = new Date(event.registration_deadline_at);
-    if (isNaN(deadline.getTime())) return true; // invalid date, allow
-    if (deadline.getTime() <= Date.now()) return false; // past deadline
-  }
-  return true;
-};
-
-const getDeadlineInfo = (event) => {
-  if (!event?.registration_deadline_at) return null;
-  const deadline = new Date(event.registration_deadline_at);
-  if (isNaN(deadline.getTime())) return null;
-  const now = Date.now();
-  const ms = deadline.getTime() - now;
-  const past = ms <= 0;
-  const totalMinutes = Math.abs(Math.floor(ms / 60000));
-  const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes - days * 24 * 60) / 60);
-  const minutes = totalMinutes % 60;
-  let label;
-  if (past) label = "closed";
-  else if (days > 0) label = `${days}d ${hours}h left`;
-  else if (hours > 0) label = `${hours}h ${minutes}m left`;
-  else label = `${minutes}m left`;
-  return { deadline, past, ms, days, hours, minutes, label, urgent: !past && ms < 24 * 60 * 60 * 1000 };
-};
-
-// Friendly event status banner: "Upcoming · 18 May", "Today", "Completed", "Results Live"
-const getEventDateStatus = (event) => {
-  if (!event) return { label: "TBA", tone: "neutral" };
-  // Manual status from admin overrides date logic
-  if (event.status === "results") return { label: "RESULTS LIVE", tone: "good" };
-  if (event.status === "completed") return { label: "COMPLETED", tone: "neutral" };
-  // Try to parse the event date string
-  const ed = event.event_date ? new Date(event.event_date) : null;
-  if (ed && !isNaN(ed.getTime())) {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const eventDay = new Date(ed.getFullYear(), ed.getMonth(), ed.getDate());
-    const diffDays = Math.round((eventDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return { label: "TODAY", tone: "good" };
-    if (diffDays < 0) return { label: "COMPLETED", tone: "neutral" };
-    // Future event — show abbreviated date
-    const dayMonth = ed.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-    return { label: `UPCOMING · ${dayMonth.toUpperCase()}`, tone: "good" };
-  }
-  // Fallback to old logic
-  if (event.status === "open") return { label: "OPEN", tone: "good" };
-  if (event.status === "closed") return { label: "CLOSED", tone: "neutral" };
-  return { label: (event.status || "TBA").toUpperCase(), tone: "neutral" };
-};
-
-const formatDeadlineDisplay = (event) => {
-  if (!event?.registration_deadline_at) return event?.registration_deadline || "—";
-  const d = new Date(event.registration_deadline_at);
-  if (isNaN(d.getTime())) return event.registration_deadline || "—";
-  return d.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
-};
-
-const calculatePoints = (results, tiers) => {
-  if (!results || results.length === 0) return 0;
-  let dayTotal = 0;
-  for (const r of results) {
-    let pts = 10;
-    if (r.position === 1) pts += 50;
-    else if (r.position === 2) pts += 30;
-    else if (r.position === 3) pts += 20;
-    if (r.isPB) pts += 25;
-    const tier = tiers[r.event] || "Bronze";
-    pts *= TIERS[tier].multiplier;
-    dayTotal += pts;
-  }
-  const eventsCompeted = new Set(results.map((r) => r.event));
-  if (eventsCompeted.size === 4) dayTotal *= 1.5;
-  return Math.round(dayTotal);
-};
-
-// Slot capacity helpers
-const slotKey = (event, tier) => `${event}|${tier}`;
-const getSlotInfo = (slotCounts, event, tier) => {
-  const k = slotKey(event, tier);
-  const info = slotCounts[k] || { registered: 0, waitlisted: 0 };
-  const spotsLeft = Math.max(0, MAX_PER_SLOT - info.registered);
-  const isFull = info.registered >= MAX_PER_SLOT;
-  let status = "open";
-  if (isFull) status = "full";
-  else if (spotsLeft <= 5) status = "almost-full";
-  else if (spotsLeft <= 12) status = "filling";
-  return { ...info, spotsLeft, isFull, status };
-};
-const getSlotColor = (status) => {
-  if (status === "full") return { bg: "#7B1A1A", text: "#FFFFFF", label: "FULL · Waitlist" };
-  if (status === "almost-full") return { bg: "#C97F12", text: "#FFFFFF", label: "Almost full" };
-  if (status === "filling") return { bg: "#5C8A2A", text: "#FFFFFF", label: "Filling fast" };
-  return { bg: "#2D7A47", text: "#FFFFFF", label: "Open" };
-};
-
-// Token format: B-PU-M-2-04 = Tier letter, Event code, Gender, Batch, Position (zero-padded)
-const TIER_LETTERS = { Bronze: "B", Silver: "S", Gold: "G", Platinum: "P" };
-const EVENT_CODES = { "Push-ups": "PU", "Squats": "SQ", "Plank": "PL", "100m Sprint": "SP" };
-const GENDER_CATEGORIES = ["Men", "Women", "Mixed"];
-const GENDER_LETTERS = { Men: "M", Women: "W", Mixed: "X" };
-const GENDER_COLORS = { Men: "#1F4E79", Women: "#B83280", Mixed: "#5C8A2A" };
-const BATCH_SIZE = 5;
-const formatToken = (tier, eventName, gender, batch, position) => {
-  const t = TIER_LETTERS[tier] || "X";
-  const e = EVENT_CODES[eventName] || "XX";
-  const g = GENDER_LETTERS[gender] || "X";
-  const b = String(batch);
-  const p = String(position).padStart(2, "0");
-  return `${t}-${e}-${g}-${b}-${p}`;
-};
-// Compute next batch & position for an (event×tier×gender)
-const nextBatchSlot = (existingAssignments, eventName, tier, gender) => {
-  const filtered = existingAssignments.filter((a) => a.event_name === eventName && a.tier === tier && a.gender_category === gender);
-  // Within a gender, batches fill sequentially. No hard cap on # of batches per gender —
-  // capacity is enforced at (event × tier) level by the parent caller.
-  for (let batch = 1; batch <= 10; batch++) {
-    const inBatch = filtered.filter((a) => a.batch_number === batch);
-    if (inBatch.length < BATCH_SIZE) {
-      const usedPositions = new Set(inBatch.map((a) => a.position));
-      for (let pos = 1; pos <= BATCH_SIZE; pos++) {
-        if (!usedPositions.has(pos)) return { batch, position: pos };
-      }
-    }
-  }
-  return null;
-};
-
-// ============================================================
-// SHARED UI COMPONENTS
-// ============================================================
 
 // Crossed swords emblem - the warrior mark of Rann
 const SwordsEmblem = ({ size = 80, color = "#D4A017", strokeWidth = 1.5 }) => (
