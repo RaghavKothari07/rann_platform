@@ -44,6 +44,13 @@ export const TIERS = {
 export const EVENTS = ["Push-ups", "Squats", "Plank", "100m Sprint"];
 
 // ── UI COMPONENTS ───────────────────────────────────────────
+export const StatCard = ({ label, value, accent = false }) => (
+  <div style={{ background: accent ? COLORS.charcoal : "#FFFFFF", color: accent ? COLORS.cream : COLORS.charcoal, padding: 16, borderRadius: 8, border: `1px solid ${COLORS.borderLight}` }}>
+    <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: 1, fontWeight: 600 }}>{label.toUpperCase()}</div>
+    <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, fontFamily: "'Cinzel', serif", color: accent ? COLORS.gold : COLORS.charcoal }}>{value}</div>
+  </div>
+);
+
 export const Button = ({ children, onClick, variant = "primary", size = "md", style = {}, disabled = false, type = "button" }) => {
   const base = { border: "none", borderRadius: 6, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", transition: "all 0.15s", fontFamily: "inherit", letterSpacing: 1, opacity: disabled ? 0.5 : 1 };
   const sizes = { sm: { padding: "6px 14px", fontSize: 12 }, md: { padding: "10px 22px", fontSize: 14 }, lg: { padding: "14px 32px", fontSize: 15 } };

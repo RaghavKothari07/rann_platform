@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import QRCode from "https://esm.sh/qrcode@1.5.3";
-import { supabase, supabaseEnabled, COLORS, TIERS, EVENTS, Button, Card, Input } from "./shared.jsx";
+import { supabase, supabaseEnabled, COLORS, TIERS, EVENTS, Button, Card, Input, StatCard } from "./shared.jsx";
 
 // AdminPanel is heavy (~1300 lines + XLSX + ExcelJS dependencies, total ~800KB).
 // Lazy-loaded so public users (the 95% case) never download it.
@@ -663,12 +663,7 @@ const SectionHeader = ({ title, subtitle, inline = false, centered = false }) =>
   </div>
 );
 
-const StatCard = ({ label, value, accent = false }) => (
-  <div style={{ background: accent ? COLORS.charcoal : "#FFFFFF", color: accent ? COLORS.cream : COLORS.charcoal, padding: 16, borderRadius: 8, border: `1px solid ${COLORS.borderLight}` }}>
-    <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: 1, fontWeight: 600 }}>{label.toUpperCase()}</div>
-    <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, fontFamily: "'Cinzel', serif", color: accent ? COLORS.gold : COLORS.charcoal }}>{value}</div>
-  </div>
-);
+// StatCard moved to shared.jsx (used by both this file and AdminPanel)
 
 // ============================================================
 // SETUP REQUIRED SCREEN — shown if Supabase not configured
