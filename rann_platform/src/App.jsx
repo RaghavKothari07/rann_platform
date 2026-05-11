@@ -1,24 +1,22 @@
 import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import QRCode from "https://esm.sh/qrcode@1.5.3";
 import {
-  supabase,
-  supabaseEnabled,
-  COLORS,
-  TIERS,
-  EVENTS,
-  Button,
-  Card,
-  Input,
-  StatCard,
   BATCH_SIZE,
   BELTS,
+  Button,
+  COLORS,
+  Card,
+  EVENTS,
   EVENT_CODES,
   EVENT_LOWER_IS_BETTER,
   EVENT_UNITS,
   GENDER_CATEGORIES,
   GENDER_COLORS,
   GENDER_LETTERS,
+  Input,
   MAX_PER_SLOT,
+  StatCard,
+  TIERS,
   TIER_LETTERS,
   _fromHex,
   _toHex,
@@ -54,6 +52,8 @@ import {
   snapshotAthleteRanks,
   sortAthletesByStanding,
   standingTied,
+  supabase,
+  supabaseEnabled,
   validatePhone,
   validatePin,
   verifyPin
@@ -1273,20 +1273,14 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
     for (const e of confirmedEvents) confirmedTiers[e] = tiers[e];
     const confirmedCost = confirmedEvents.reduce((sum, e) => sum + (TIERS[tiers[e]]?.entry || 0), 0);
 
-    // Validate: payment ref required only if anything is confirmed.
-    // Two valid formats:
-    //   1. Razorpay payment ID — starts with "pay_" followed by alphanumerics
-    //   2. UPI UTR/transaction ID — digit-only, 6+ digits
+    // Validate: Razorpay payment required for any confirmed slots.
+    // Only Razorpay payment IDs are accepted (format: pay_xxx).
+    // Manual UPI was removed because it allowed unverified slot reservations.
     if (confirmedEvents.length > 0) {
       const ref = (paymentNote || "").trim();
       const isRazorpayId = /^pay_[A-Za-z0-9]+$/.test(ref);
-      const cleanDigits = ref.replace(/\D/g, "");
-      if (!ref) {
-        setError("Payment reference is required for confirmed slots. Please pay first, then enter the UTR/transaction ID from your UPI app.");
-        return;
-      }
-      if (!isRazorpayId && cleanDigits.length < 6) {
-        setError("Payment reference must be at least 6 digits (last 6 digits of your UTR / transaction ID), or a Razorpay payment ID.");
+      if (!ref || !isRazorpayId) {
+        setError("Please complete payment first. Tap the \"Pay ₹\" button above to pay via Razorpay.");
         return;
       }
     }
@@ -1712,27 +1706,7 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
                   </div>
                 </div>
 
-                {/* ─── FALLBACK: Manual UPI (collapsed by default) ─── */}
-                <details style={{ background: COLORS.creamLight, padding: 12, borderRadius: 6, fontSize: 12, color: COLORS.textGray }}>
-                  <summary style={{ cursor: "pointer", fontWeight: 600, color: COLORS.charcoal, padding: "4px 0" }}>
-                    Or pay manually via UPI →
-                  </summary>
-                  <div style={{ marginTop: 12, padding: 14, background: "#FFFFFF", borderRadius: 6 }}>
-                    <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", justifyContent: "center", marginBottom: 12 }}>
-                      <UPIQrCode upiId={upiId} size={120} />
-                      <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-                        <div style={{ fontSize: 10, color: COLORS.textGray, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>UPI ID</div>
-                        <div style={{ marginBottom: 10 }}><CopyableUpiId upiId={upiId} fontSize={13} /></div>
-                        <div style={{ background: COLORS.charcoal, padding: "8px 12px", borderRadius: 4, color: COLORS.cream }}>
-                          <div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.7, fontWeight: 700 }}>ENTER ₹{confirmedCost}</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 11, color: COLORS.charcoal, lineHeight: 1.5 }}>
-                      Scan QR or copy UPI ID → open your UPI app → type ₹{confirmedCost} → pay → paste the reference number below.
-                    </div>
-                  </div>
-                </details>
+                {/* Manual UPI option removed — Razorpay is the only payment path */}
 
                 {waitlistEvents.length > 0 && (
                   <div style={{ fontSize: 12, color: "#7B5500", background: "#FFF4D4", padding: "8px 10px", borderRadius: 4, marginTop: 10, lineHeight: 1.5 }}>
@@ -1743,22 +1717,8 @@ const RegisterPage = ({ event, upiId, onComplete, onNav, athlete, slotCounts = {
             )}
 
             {!allWaitlist && !rzpSuccessRef && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: COLORS.charcoal, marginBottom: 6, letterSpacing: 0.5 }}>
-                  Payment reference / UPI transaction ID <span style={{ color: COLORS.primary }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={paymentNote}
-                  onChange={(e) => setPaymentNote(e.target.value.replace(/\D/g, "").slice(0, 12))}
-                  placeholder="Last 6 digits of UTR or transaction ID"
-                  style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, fontFamily: "inherit", background: "#FAFAF7", color: COLORS.charcoal, WebkitTextFillColor: COLORS.charcoal, boxSizing: "border-box", letterSpacing: 1 }}
-                />
-                <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 4 }}>
-                  Required if you paid manually via UPI. If you used the "Pay" button above, this is filled in automatically.
-                </div>
+              <div style={{ marginBottom: 16, background: "#FFF8E7", border: `1px solid ${COLORS.gold}40`, padding: "12px 14px", borderRadius: 6, fontSize: 12, color: COLORS.charcoal, lineHeight: 1.5 }}>
+                <strong style={{ color: COLORS.charcoal }}>Payment via Razorpay only.</strong> Tap the "Pay ₹{confirmedCost}" button above. We accept UPI, cards, NetBanking, and wallets — all secured by Razorpay. Your slot is confirmed instantly on successful payment.
               </div>
             )}
 
@@ -2114,52 +2074,17 @@ const DashboardPage = ({ athlete, event, currentRegistration, eventResults, onNa
                 </div>
               )}
 
-              {/* ─── FALLBACK: Manual UPI (collapsed) ─── */}
+              {/* Manual UPI fallback removed — Razorpay only */}
               {!rzpDashSuccess && (
-                <details style={{ background: COLORS.creamLight, padding: 12, borderRadius: 6, fontSize: 12, color: COLORS.textGray, marginBottom: 10 }}>
-                  <summary style={{ cursor: "pointer", fontWeight: 600, color: COLORS.charcoal, padding: "4px 0" }}>
-                    Or pay manually via UPI →
-                  </summary>
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 14, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-                      <UPIQrCode upiId={upiId} size={120} />
-                      <div style={{ minWidth: 180, flex: 1 }}>
-                        <div style={{ fontSize: 10, color: COLORS.textGray, letterSpacing: 1, fontWeight: 700, marginBottom: 6 }}>UPI ID</div>
-                        <div style={{ marginBottom: 10 }}><CopyableUpiId upiId={upiId} fontSize={13} /></div>
-                        <div style={{ background: COLORS.charcoal, padding: "8px 12px", borderRadius: 4, color: COLORS.cream, display: "inline-block" }}>
-                          <span style={{ fontSize: 9, letterSpacing: 1, opacity: 0.7, fontWeight: 700 }}>ENTER ₹{currentRegistration.total_cost}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: COLORS.charcoal, marginTop: 14 }}>After paying, enter your UPI reference number</div>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="e.g., 425671298304"
-                      value={payRef}
-                      onChange={(e) => { setPayRef(e.target.value.replace(/\D/g, "").slice(0, 20)); setPayError(""); }}
-                      style={{ width: "100%", padding: "10px 12px", fontSize: 15, fontFamily: "monospace", border: `1px solid ${COLORS.borderLight}`, borderRadius: 6, background: "#FAFAF7", boxSizing: "border-box", letterSpacing: 1 }}
-                    />
-                    {payError && (
-                      <div style={{ fontSize: 12, color: COLORS.primary, marginTop: 8, fontWeight: 600 }}>{payError}</div>
-                    )}
-                    <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-                      <Button onClick={submitPayment} variant="primary" size="sm" disabled={paySubmitting} style={{ flex: 1, minWidth: 160 }}>
-                        {paySubmitting ? "Submitting..." : "Submit Payment Reference"}
-                      </Button>
-                    </div>
-                    <div style={{ fontSize: 10, color: COLORS.textGray, marginTop: 8, fontStyle: "italic", lineHeight: 1.5 }}>
-                      Manual UPI payments require admin verification (typically within 15 minutes).
-                    </div>
-                  </div>
-                </details>
+                <div style={{ background: "#FFF8E7", border: `1px solid ${COLORS.gold}40`, padding: "10px 12px", borderRadius: 6, fontSize: 12, color: COLORS.charcoal, lineHeight: 1.5, marginBottom: 10 }}>
+                  Tap the "Pay" button above. We accept UPI, cards, NetBanking, and wallets — all secured by Razorpay. Your slot is confirmed instantly on successful payment.
+                </div>
               )}
 
               {/* Cancel button to close the expanded card */}
               {!rzpDashSuccess && (
                 <div style={{ textAlign: "center", marginTop: 8 }}>
-                  <Button onClick={() => { setPaymentExpanded(false); setPayError(""); setRzpDashError(""); }} variant="light" size="sm">Cancel</Button>
+                  <Button onClick={() => { setPaymentExpanded(false); setRzpDashError(""); }} variant="light" size="sm">Cancel</Button>
                 </div>
               )}
             </div>
@@ -3262,6 +3187,10 @@ export default function App() {
     const counts = {};
     for (const r of (regs || [])) {
       if (r.event_id !== eventId) continue;
+      // Only count VERIFIED registrations toward capacity.
+      // Pending registrations (manual UPI or stale Razorpay) no longer block real paying users.
+      // Race-condition risk for two simultaneous Razorpay payments is acceptable — admin can resolve.
+      if (r.payment_status !== "verified") continue;
       for (const evName of (r.events_selected || [])) {
         const tier = r.tiers?.[evName];
         if (!tier) continue;
