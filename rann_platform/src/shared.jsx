@@ -35,10 +35,10 @@ export const COLORS = {
 };
 
 export const TIERS = {
-  Bronze: { entry: 100, multiplier: 1, color: "#6B4423" },
-  Silver: { entry: 300, multiplier: 1.5, color: "#707070" },
-  Gold: { entry: 500, multiplier: 2, color: "#D4A017" },
-  Platinum: { entry: 1000, multiplier: 3, color: "#8B0000" },
+  Bronze: { entry: 250, multiplier: 1, color: "#6B4423" },
+  Silver: { entry: 500, multiplier: 1.5, color: "#707070" },
+  Gold: { entry: 1000, multiplier: 2, color: "#D4A017" },
+  Platinum: { entry: 2500, multiplier: 3, color: "#8B0000" },
 };
 
 export const EVENTS = ["Push-ups", "Squats", "Plank", "100m Sprint"];
